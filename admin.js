@@ -26,7 +26,7 @@ function render() {
   }
   for (const c of CARDS) { const td = tb.querySelector(`[data-now="${c.sym}"]`); if (td) td.textContent = fmt(roundT(num(c.price))); }
   const rows = ps.map(x => { const pr = num(x.equity) - num(x.injected);
-    return `<tr><td>${esc(x.name)}</td><td>${esc(x.age_group)}</td><td class="num">${new Date(x.joined_at).toLocaleDateString('ko-KR')}</td><td class="num">${fmt(x.equity)}</td><td class="num ${pr >= 0 ? 'up' : 'down'}">${pr >= 0 ? '+' : ''}${fmt(pr)}</td><td class="num">${x.refills}</td><td>${x.banned ? '<span class="pill s">정지</span>' : '<span class="pill k">정상</span>'}</td><td><input class="cell" data-bonus="${x.id}" inputmode="numeric" placeholder="젬" aria-label="보너스 젬"> <button class="mini" data-give="${x.id}">지급</button></td><td><button class="mini" data-ban="${x.id}" data-b="${x.banned ? 0 : 1}">${x.banned ? '정지 해제' : '거래 정지'}</button> <button class="mini danger" data-wipe="${x.id}">초기화</button></td></tr>`; }).join('') || '<tr><td colspan="9" class="empty">아직 참가자가 없어요.</td></tr>';
+    return `<tr><td><input class="cell" data-nm="${x.id}" value="${esc(x.name)}" maxlength="12" aria-label="닉네임" style="width:9em"> <button class="mini" data-ren="${x.id}">변경</button></td><td>${esc(x.age_group)}</td><td class="num">${new Date(x.joined_at).toLocaleDateString('ko-KR')}</td><td class="num">${fmt(x.equity)}</td><td class="num ${pr >= 0 ? 'up' : 'down'}">${pr >= 0 ? '+' : ''}${fmt(pr)}</td><td class="num">${x.refills}</td><td>${x.banned ? '<span class="pill s">정지</span>' : '<span class="pill k">정상</span>'}</td><td><input class="cell" data-bonus="${x.id}" inputmode="numeric" placeholder="젬" aria-label="보너스 젬"> <button class="mini" data-give="${x.id}">지급</button></td><td><button class="mini" data-ban="${x.id}" data-b="${x.banned ? 0 : 1}">${x.banned ? '정지 해제' : '거래 정지'}</button> <button class="mini danger" data-wipe="${x.id}">초기화</button></td></tr>`; }).join('') || '<tr><td colspan="9" class="empty">아직 참가자가 없어요.</td></tr>';
   const ub = $('oUsers'); if (ub.dataset.h !== rows && !ub.contains(document.activeElement)) { ub.innerHTML = rows; ub.dataset.h = rows; wire(); }
 }
 function fillCfg() {
@@ -38,6 +38,7 @@ async function call(fn, args, ok) { const r = await sb.rpc(fn, args); if (r.erro
 function wire() {
   const ub = $('oUsers');
   ub.querySelectorAll('[data-give]').forEach(b => b.onclick = () => { const id = b.dataset.give, amt = Math.floor(num(ub.querySelector(`[data-bonus="${id}"]`).value)); if (!amt) return toast('지급할 젬을 입력해 주세요.'); call('admin_bonus', { p_id: id, p_amount: amt, p_as_profit: false }, `${fmt(amt)}젬을 지급했어요`); });
+  ub.querySelectorAll('[data-ren]').forEach(b => b.onclick = () => { const id = b.dataset.ren, nm = ub.querySelector(`[data-nm="${id}"]`).value.trim(); call('admin_rename', { p_id: id, p_name: nm }, `닉네임을 "${nm}"(으)로 바꿨어요`); });
   ub.querySelectorAll('[data-ban]').forEach(b => b.onclick = () => call('admin_ban', { p_id: b.dataset.ban, p_banned: b.dataset.b === '1' }, b.dataset.b === '1' ? '거래를 정지했어요' : '정지를 해제했어요'));
   ub.querySelectorAll('[data-wipe]').forEach(b => b.onclick = () => armed(b, '한 번 더', () => call('admin_reset_player', { p_id: b.dataset.wipe }, '계정을 초기화했어요')));
 }
@@ -50,6 +51,8 @@ $('oSaveCfg').onclick = () => {
   const n = id => num(String($(id).value).replace(/,/g, ''));
   call('admin_set_config', { p: { season: $('cSeason').value.trim() || '시즌 1', start_cash: n('cStart'), refill_amount: n('cRefill'), refill_thr_pct: n('cThr'), refill_cool_h: n('cCool'), max_lev: n('cLev'), fee_pct: n('cFee'), close_start_h: n('cCs'), close_end_h: n('cCe'), max_open_orders: n('cMax'), daily_bonus: n('cDaily'), whale_threshold: n('cWhale'), notice: $('cNotice').value.trim() } }, '설정을 저장했어요').then(ok => { if (ok) fillCfg(); });
 };
+$('oSaveFilter').onclick = () => call('admin_set_filter', { p_words: $('cFilter').value }, '금칙어를 저장했어요').then(loadFilter);
+async function loadFilter() { const r = await sb.rpc('admin_get_filter'); if (!r.error) $('cFilter').value = r.data || ''; }
 $('gAll').onclick = () => { const amt = Math.floor(num(String($('gAmt').value).replace(/,/g, ''))); if (!(amt > 0)) return toast('지급할 젬을 입력해 주세요.');
   armed($('gAll'), `1인당 ${fmt(amt)}젬, 한 번 더 누르면 지급해요`, () => call('admin_gift_all', { p_amount: amt, p_note: $('gNote').value.trim() || null, p_as_profit: $('gProfit').checked }, `전원에게 ${fmt(amt)}젬을 지급했어요`)); };
 $('oSeasonReset').onclick = () => armed($('oSeasonReset'), '정말 전원 초기화? 한 번 더', () => call('admin_season_reset', { p_season: $('newSeason').value.trim() || null }, '모든 참가자를 새 시즌으로 초기화했어요'));
@@ -66,7 +69,7 @@ $('tokenCopy').onclick = async () => { try { await navigator.clipboard.writeText
     const { data } = await sb.auth.getSession(); const id = data.session?.user?.id || '';
     $('loading').innerHTML = `${esc(errMsg(e))}<br><br>이 기기를 운영자로 등록하려면 아래 계정 ID를 안내서의 "운영자 등록" SQL에 넣어 실행해 주세요.<br><code style="user-select:all;color:var(--gem2);word-break:break-all">${esc(id)}</code>`;
     return; }
-  $('loading').hidden = true; $('app').hidden = false; render();
+  $('loading').hidden = true; $('app').hidden = false; render(); loadFilter();
   setInterval(async () => { if (document.hidden) return; try { await sb.rpc('ping'); await load(); render(); } catch (e) {} }, 10000);
 })();
 })();

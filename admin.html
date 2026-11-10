@@ -9,7 +9,7 @@
 <link rel="icon" href="icon-192.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Do+Hyeon&family=IBM+Plex+Sans+KR:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
-<link rel="stylesheet" href="style.css?v=4">
+<link rel="stylesheet" href="style.css?v=5">
 </head>
 <body>
 <div class="loading" id="loading">운영자 권한을 확인하는 중…</div>
@@ -55,6 +55,8 @@
       <label class="f num-in" for="cMax">1인 최대 예약 주문<div class="inp"><input id="cMax" inputmode="numeric"><em>개</em></div></label>
       <label class="f num-in" for="cDaily">출석 보상 (0이면 끔)<div class="inp"><input id="cDaily" inputmode="numeric"><em>젬</em></div></label>
       <label class="f num-in" for="cWhale">고래 뉴스 기준 금액<div class="inp"><input id="cWhale" inputmode="numeric"><em>젬</em></div></label>
+      <label class="f wide" for="cFilter">닉네임 금칙어 (쉼표로 구분 · 포함되면 가입 불가)<div class="inp"><textarea id="cFilter" rows="3" style="width:100%;background:none;border:0;color:inherit;font:inherit;resize:vertical"></textarea></div></label>
+      <button class="mini wide" id="oSaveFilter">금칙어 저장</button>
       <label class="f wide" for="cNotice">공지 (거래 화면 상단)<div class="inp"><input id="cNotice" maxlength="120" placeholder="비워 두면 표시 안 함"></div></label>
       <button class="primary wide" id="oSaveCfg">설정 저장</button>
     </div>
@@ -75,13 +77,13 @@
 </section>
 <section class="box">
   <h3><span>참가자 관리</span><span><input class="cell" id="newSeason" placeholder="새 시즌 이름" aria-label="새 시즌 이름"> <button class="mini danger" id="oSeasonReset">시즌 초기화 (전원)</button></span></h3>
-  <div class="tblwrap"><table><thead><tr><th>닉네임</th><th>연령대</th><th>가입</th><th>총 자산</th><th>순수익</th><th>재충전</th><th>상태</th><th>젬 지급</th><th></th></tr></thead><tbody id="oUsers"></tbody></table></div>
+  <div class="tblwrap"><table><thead><tr><th>닉네임 (수정 가능)</th><th>연령대</th><th>가입</th><th>총 자산</th><th>순수익</th><th>재충전</th><th>상태</th><th>젬 지급</th><th></th></tr></thead><tbody id="oUsers"></tbody></table></div>
 </section>
 </div>
 <div class="toast" id="toast" hidden></div>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
-<script src="config.js?v=4"></script>
-<script src="common.js?v=4"></script>
-<script src="admin.js?v=4"></script>
+<script src="config.js?v=5"></script>
+<script src="common.js?v=5"></script>
+<script src="admin.js?v=5"></script>
 </body>
 </html>

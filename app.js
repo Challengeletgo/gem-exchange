@@ -11,15 +11,21 @@ const fee = () => num(CFG.fee_pct) / 100;
 const open = () => isOpen(CFG);
 
 /* ---------------- data ---------------- */
-async function loadMarket() {
+let lastFull = 0, lastCfg = 0, lastNews = 0, newsId = 0;
+const LIVE_COLS = 'sym,price,day_ref,base_krw,base_asof,base_updated_at';
+async function loadMarket(force) {
+  const now = Date.now(), full = force || !CARDS.length || now - lastFull > 300000, wantCfg = full || now - lastCfg > 60000, wantNews = full || now - lastNews > 15000;
   const [c, g, n] = await Promise.all([
-    sb.from('cards').select('*').order('sort'),
-    sb.from('config').select('*').eq('id', 1).single(),
-    sb.from('news').select('*').order('id', { ascending: false }).limit(1),
+    sb.from('cards').select(full ? '*' : LIVE_COLS).order('sort'),
+    wantCfg ? sb.from('config').select('*').eq('id', 1).single() : {},
+    wantNews ? sb.from('news').select('*').order('id', { ascending: false }).limit(1) : {},
   ]);
-  if (!c.error && c.data) CARDS = c.data;
-  if (!g.error && g.data) CFG = g.data;
-  if (!n.error && n.data && n.data[0]) showNews(n.data[0]);
+  if (!c.error && c.data) {
+    if (full) { CARDS = c.data; lastFull = now; }
+    else for (const x of c.data) { const k = card(x.sym); if (!k) { lastFull = 0; continue; } if (k.base_asof !== x.base_asof) lastFull = 0; Object.assign(k, x); }
+  }
+  if (wantCfg && !g.error && g.data) { CFG = g.data; lastCfg = now; }
+  if (wantNews && !n.error && n.data) { lastNews = now; if (n.data[0] && n.data[0].id !== newsId) { newsId = n.data[0].id; showNews(n.data[0]); } }
   if (!sel && CARDS.length) { sel = CARDS[0].sym; buildRail(); }
 }
 async function loadMe() { const r = await sb.rpc('my_summary'); if (!r.error) ME = r.data; return ME; }
@@ -28,10 +34,21 @@ async function loadPend() {
   if (!p.error) { PEND = {}; for (const x of p.data || []) PEND[x.sym] = x; }
   if (!l.error) LADDER = l.data || [];
 }
+let candKey = '';
+const toC = x => ({ t: new Date(x.t).getTime(), o: num(x.o), h: num(x.h), l: num(x.l), c: num(x.c), v: num(x.v) });
 async function loadCandles() {
   if (!sel) return;
-  const r = await sb.from(tf === 15 ? 'candles_15' : 'candles').select('t,o,h,l,c,v').eq('sym', sel).order('t', { ascending: false }).limit(tf === 15 ? 200 : 600);
-  if (!r.error) CANDLES = (r.data || []).reverse().map(x => ({ t: new Date(x.t).getTime(), o: num(x.o), h: num(x.h), l: num(x.l), c: num(x.c), v: num(x.v) }));
+  const tbl = tf === 15 ? 'candles_15' : 'candles', key = sel + '|' + tbl, max = tf === 15 ? 200 : 600;
+  const inc = key === candKey && CANDLES.length > 0;
+  let q = sb.from(tbl).select('t,o,h,l,c,v').eq('sym', sel);
+  q = inc ? q.gte('t', new Date(CANDLES[CANDLES.length - 1].t).toISOString()).order('t', { ascending: true }).limit(100)
+          : q.order('t', { ascending: false }).limit(max);
+  const r = await q;
+  if (r.error || key !== sel + '|' + (tf === 15 ? 'candles_15' : 'candles')) return;
+  const rows = (r.data || []).map(toC);
+  if (!inc) { CANDLES = rows.reverse(); candKey = key; return; }
+  if (!rows.length) return;
+  const from = rows[0].t; CANDLES = CANDLES.filter(x => x.t < from).concat(rows).slice(-max);
 }
 async function loadLB() { const r = await sb.rpc('leaderboard'); if (!r.error) LB = r.data || []; }
 
@@ -229,6 +246,11 @@ $('rGo2').onclick = async () => {
   await loadMe(); start(); toast('계정을 불러왔어요!');
 };
 $('reset').onclick = () => armed($('reset'), '한 번 더 누르면 초기화돼요', () => act('reset_me', {}, '시작 젬으로 새로 시작했어요'));
+$('delMe').onclick = () => armed($('delMe'), '닉네임·자산·기록이 모두 지워져요. 한 번 더', async () => {
+  const r = await sb.rpc('delete_me'); if (r.error) return toast(errMsg(r.error));
+  try { await sb.auth.signOut(); } catch (e) {}
+  toast('계정과 기록을 모두 삭제했어요.'); setTimeout(() => location.reload(), 1200);
+});
 
 function setMode(m) { mode = m; for (const [id, k] of [['mSpot', 'spot'], ['mFut', 'fut'], ['mRes', 'res']]) $(id).setAttribute('aria-pressed', m === k); $('spotForm').hidden = m !== 'spot'; $('futForm').hidden = m !== 'fut'; $('resForm').hidden = m !== 'res'; }
 function setTab() { document.querySelectorAll('[data-tab]').forEach(b => b.setAttribute('aria-pressed', b.dataset.tab === tab)); $('ledger').dataset.h = ''; }
@@ -242,7 +264,7 @@ document.querySelectorAll('[data-pm]').forEach(b => b.onclick = () => { $('margi
 document.querySelectorAll('[data-rp]').forEach(b => b.onclick = () => { $('rPrice').value = roundT(price(sel) * (1 + +b.dataset.rp)); ticket(); });
 ['qty', 'margin', 'lev', 'rPrice', 'rQty'].forEach(id => $(id).addEventListener('input', ticket));
 function setTf(v) { const was15 = tf === 15; tf = v; for (const [id, k] of [['tf15', 15], ['tf1', 1], ['tf5', 5]]) $(id).setAttribute('aria-pressed', tf === k);
-  if (was15 !== (tf === 15)) { CANDLES = []; drawChart(); loadCandles().then(drawChart); } else drawChart(); }
+  if (was15 !== (tf === 15)) { CANDLES = []; candKey = ''; drawChart(); loadCandles().then(drawChart); } else drawChart(); }
 $('tf15').onclick = () => setTf(15); $('tf1').onclick = () => setTf(1); $('tf5').onclick = () => setTf(5);
 window.addEventListener('resize', () => { drawChart(); drawLadder(); });
 
@@ -285,6 +307,18 @@ function start() {
   Promise.all([loadCandles(), loadPend(), loadLB()]).then(() => render());
   sb.rpc('is_admin').then(r => { if (r.data === true) $('opLink').hidden = false; });
 }
+/* ---------------- 자리 비움: 10분 동안 조작이 없으면 시세 받기 멈춤 ---------------- */
+let lastAct = Date.now(), idle = false;
+const IDLE_MS = 10 * 60 * 1000;
+const paused = () => document.hidden || idle;
+function wake() {
+  lastAct = Date.now(); if (!idle) return;
+  idle = false; $('idle').hidden = true;
+  ping().then(loadStats); loadMarket(true).then(() => Promise.all([ME ? loadMe() : null, ME ? loadCandles() : null, ME ? loadPend() : null])).then(() => { if (ME && !$('app').hidden) render(); });
+}
+['pointerdown', 'keydown', 'wheel', 'touchstart'].forEach(ev => window.addEventListener(ev, wake, { passive: true }));
+document.addEventListener('visibilitychange', () => { if (!document.hidden) wake(); });
+setInterval(() => { if (!idle && Date.now() - lastAct > IDLE_MS) { idle = true; $('idle').hidden = false; } }, 15000);
 async function ping() { try { await sb.rpc('ping'); } catch (e) {} }
 async function loadStats() { const r = await sb.rpc('site_stats'); if (r.error || !r.data) return; const s = r.data;
   $('lvOn').textContent = fmt(Math.max(1, s.online)); $('lvOn2').textContent = fmt(Math.max(1, s.online)); $('lvToday').textContent = fmt(s.today); $('lvPlayers').textContent = fmt(s.players); $('lvTrades').textContent = fmt(s.trades_today); }
@@ -293,18 +327,20 @@ async function boot() {
   try { await GEM.ensureSession(sb); }
   catch (e) { $('loading').textContent = '접속하지 못했어요. Supabase에서 익명 로그인(Anonymous sign-ins)을 켰는지 확인해 주세요.'; return; }
   ping().then(loadStats);
-  setInterval(() => { if (!document.hidden) ping(); }, 30000);
-  setInterval(() => { if (!document.hidden) loadStats(); }, 15000);
-  document.addEventListener('visibilitychange', () => { if (!document.hidden) ping().then(loadStats); });
+  setInterval(() => { if (!paused()) ping(); }, 30000);
+  setInterval(() => { if (!paused()) loadStats(); }, 30000);
   await loadMarket();
   if (!CARDS.length) { $('loading').textContent = '종목 데이터가 없어요. supabase.sql을 실행했는지 확인해 주세요.'; return; }
   await loadMe();
   if (ME) start(); else { $('loading').hidden = true; $('gate').hidden = false; $('gName').focus(); }
-  setInterval(async () => { if (document.hidden) return; await Promise.all([loadMarket(), ME ? loadMe() : null]); if (ME && !$('app').hidden) render(); }, 5000);
-  setInterval(async () => { if (document.hidden || !ME) return; await loadPend(); render(); }, 10000);
-  setInterval(async () => { if (document.hidden || !ME) return; await loadLB(); if (tf !== 15) await loadCandles(); render(); }, 20000);
-  setInterval(async () => { if (document.hidden || !ME || tf !== 15) return; await loadCandles(); drawChart(); }, 5000);
-  setInterval(() => { if (!ME || $('app').hidden) return; const o = open(); if (wasOpen !== null && o !== wasOpen) { toast(o ? '장이 열렸어요!' : '장이 마감됐어요. 예약 주문만 받아요.'); loadMarket().then(loadMe).then(() => render()); } wasOpen = o; $('countdown').textContent = '개장까지 ' + hms(secsToSwitch(CFG)); }, 1000);
+  // 장중 5초, 장 마감 중에는 가격이 멈춰 있으니 30초마다만 확인해요.
+  let beat = 0;
+  setInterval(async () => { beat++; if (paused() || (!open() && beat % 6)) return; await Promise.all([loadMarket(), ME ? loadMe() : null]); if (ME && !$('app').hidden) render(); }, 5000);
+  setInterval(async () => { if (paused() || !ME) return; await loadPend(); render(); }, 15000);
+  setInterval(async () => { if (paused() || !ME) return; await loadLB(); render(); }, 60000);
+  setInterval(async () => { if (paused() || !ME || !open() || tf !== 15) return; await loadCandles(); drawChart(); }, 5000);
+  setInterval(async () => { if (paused() || !ME || !open() || tf === 15) return; await loadCandles(); render(); }, 20000);
+  setInterval(() => { if (!ME || $('app').hidden) return; const o = open(); if (wasOpen !== null && o !== wasOpen) { toast(o ? '장이 열렸어요!' : '장이 마감됐어요. 예약 주문만 받아요.'); loadMarket(true).then(loadMe).then(() => render()); } wasOpen = o; $('countdown').textContent = '개장까지 ' + hms(secsToSwitch(CFG)); }, 1000);
 }
 boot();
 })();

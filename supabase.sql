@@ -1042,3 +1042,78 @@ update public.players p set cash = cash - 9000000, injected = injected - 9000000
  where injected = 10000000 and cash = 10000000 and refills = 0
    and not exists (select 1 from public.history h where h.player_id = p.id and h.what not in ('가입 지급'));
 delete from public.visits where day < (now() at time zone 'Asia/Seoul')::date - 60;
+
+-- 005: 닉네임 금칙어, 운영자 닉네임 변경, 내 계정 삭제 (기존 데이터 보존)
+create table if not exists public.name_filter (word text primary key);
+alter table public.name_filter enable row level security;  -- 정책 없음: 목록은 밖에서 안 보임
+insert into public.name_filter (word) values
+ ('시발'),('씨발'),('씨빨'),('씨바'),('시바새'),('시벌'),('씨벌'),('쓰벌'),('슈발'),('ㅅㅂ'),('병신'),('븅신'),('빙신'),('병쉰'),('좆'),('좃'),('존나'),('졸라'),
+ ('개새'),('개색'),('개세끼'),('개쉐'),('새끼'),('새키'),('섹스'),('썅'),('엠창'),('니미'),('느금'),('느검'),('니애미'),('니에미'),('애미'),('애비'),
+ ('보지'),('자지'),('지랄'),('염병'),('미친놈'),('미친년'),('또라이'),('등신'),('걸레'),('창녀'),('창년'),('한남'),('김치녀'),('된장녀'),('메갈'),('일베'),
+ ('짱깨'),('쪽바리'),('흑형'),('딸딸이'),('야동'),('강간'),('자살'),('fuck'),('fuk'),('shit'),('bitch'),('sex'),('porn'),('nigg'),('dick'),('pussy'),
+ ('cunt'),('asshole'),('bastard'),('slut'),('whore'),('fag'),('rape'),('nazi'),('hitler'),
+ ('운영자'),('관리자'),('운영진'),('admin'),('공식'),('official'),('젬거래소'),('포켓코딩')
+on conflict do nothing;
+
+create or replace function public._name_ok(p text) returns boolean
+language sql stable security definer set search_path = public as $$
+  with n as (select lower(regexp_replace(coalesce(p, ''), '[^0-9A-Za-z가-힣ㄱ-ㅎ]', '', 'g')) a,
+                    lower(regexp_replace(coalesce(p, ''), '[^A-Za-z가-힣ㄱ-ㅎ]', '', 'g')) b,
+                    lower(translate(regexp_replace(coalesce(p, ''), '[^0-9A-Za-z]', '', 'g'), '013457@$', 'oieastas')) c)
+  select not exists (select 1 from name_filter f, n where position(f.word in n.a) > 0 or position(f.word in n.b) > 0 or position(f.word in n.c) > 0)
+$$;
+revoke all on function public._name_ok(text) from public, anon, authenticated;
+
+create or replace function public.join_game(p_name text, p_age int) returns void
+language plpgsql security definer set search_path = public as $$
+declare cfg config; g text; nm text := trim(p_name);
+begin
+  if auth.uid() is null then raise exception '로그인이 필요해요'; end if;
+  if exists (select 1 from players where id = auth.uid()) then raise exception '이미 가입했어요'; end if;
+  if p_age is null or p_age < 1 or p_age > 120 then raise exception '나이를 확인해 주세요'; end if;
+  if p_age < 14 then raise exception '만 14세 미만은 보호자 동의가 필요해서 가입할 수 없어요'; end if;
+  if nm !~ '^[0-9A-Za-z가-힣_ .-]{2,12}$' then raise exception '닉네임은 한글·영문·숫자 2~12자로 정해 주세요'; end if;
+  if not _name_ok(nm) then raise exception '닉네임에 쓸 수 없는 단어가 들어 있어요. 다른 닉네임을 정해 주세요'; end if;
+  if exists (select 1 from players where lower(name) = lower(nm)) then raise exception '이미 쓰고 있는 닉네임이에요'; end if;
+  select * into cfg from config where id = 1;
+  g := case when p_age < 20 then '10대' when p_age < 30 then '20대' when p_age < 40 then '30대' when p_age < 50 then '40대' else '50대 이상' end;
+  insert into players (id, name, age_group, cash, injected, season) values (auth.uid(), nm, g, cfg.start_cash, cfg.start_cash, cfg.season);
+  insert into history (player_id, what, amount) values (auth.uid(), '가입 지급', cfg.start_cash);
+end $$;
+
+create or replace function public.admin_rename(p_id uuid, p_name text) returns void
+language plpgsql security definer set search_path = public as $$
+declare nm text := trim(p_name);
+begin
+  perform _need_admin();
+  if nm !~ '^[0-9A-Za-z가-힣_ .-]{2,12}$' then raise exception '닉네임은 한글·영문·숫자 2~12자로 정해 주세요'; end if;
+  if exists (select 1 from players where lower(name) = lower(nm) and id <> p_id) then raise exception '이미 쓰고 있는 닉네임이에요'; end if;
+  update players set name = nm where id = p_id;
+  if not found then raise exception '없는 참가자예요'; end if;
+end $$;
+
+create or replace function public.admin_get_filter() returns text
+language plpgsql security definer set search_path = public as $$
+begin perform _need_admin(); return (select string_agg(word, ', ' order by word) from name_filter); end $$;
+
+create or replace function public.admin_set_filter(p_words text) returns int
+language plpgsql security definer set search_path = public as $$
+declare n int;
+begin
+  perform _need_admin();
+  delete from name_filter;
+  insert into name_filter (word)
+    select distinct lower(trim(w)) from regexp_split_to_table(coalesce(p_words, ''), '[,\n\r]+') w where length(trim(w)) > 0
+  on conflict do nothing;
+  get diagnostics n = row_count; return n;
+end $$;
+
+create or replace function public.delete_me() returns void
+language plpgsql security definer set search_path = public as $$
+begin
+  if auth.uid() is null then raise exception '로그인이 필요해요'; end if;
+  if exists (select 1 from admins where user_id = auth.uid()) then raise exception '운영자 계정은 여기서 삭제할 수 없어요'; end if;
+  delete from players where id = auth.uid();
+  delete from presence where uid = auth.uid();
+  delete from visits where uid = auth.uid();
+end $$;

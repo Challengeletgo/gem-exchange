@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>개인정보 처리 안내 · 젬 거래소</title>
+<meta name="theme-color" content="#0d1122">
+<link rel="icon" href="icon-192.png">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Do+Hyeon&family=IBM+Plex+Sans+KR:wght@400;500;700&display=swap">
+<link rel="stylesheet" href="style.css?v=5">
+<style>
+  .doc{max-width:720px;margin:0 auto;padding:24px 16px 64px;line-height:1.75;font-size:14.5px}
+  .doc h1{font-family:var(--f-disp);font-weight:400;font-size:28px;margin:8px 0 4px}
+  .doc h2{font-size:16px;margin:28px 0 8px;color:var(--gem2)}
+  .doc p,.doc li{color:var(--fg)}
+  .doc ul{padding-left:20px;margin:6px 0}
+  .doc table{width:100%;min-width:0;table-layout:fixed;overflow-wrap:anywhere;border-collapse:collapse;font-size:13.5px;margin:8px 0}
+  .doc th,.doc td{white-space:normal;border:1px solid var(--line);padding:8px 10px;text-align:left;vertical-align:top}
+  .doc th{background:var(--panel2);font-weight:600}
+  .doc .sub{color:var(--mute);font-size:13px}
+  .doc a{color:var(--gem2)}
+</style>
+</head>
+<body>
+<main class="doc">
+  <a href="./">← 젬 거래소로 돌아가기</a>
+  <h1>개인정보 처리 · 이용 안내</h1>
+  <p class="sub">시행일 2026년 11월 10일</p>
+
+  <p class="disclaim">젬 거래소는 개인이 만든 <b>비공식 팬 사이트</b>로, 닌텐도·크리처스·게임프리크·주식회사 포켓몬과 아무 관련이 없어요. 포켓몬과 카드 이름은 각 권리자의 상표예요. 젬은 <b>실제 돈과 바꿀 수 없는</b> 가상 화폐이고, 이 사이트의 시세와 뉴스는 실제 투자 조언이 아니에요.</p>
+
+  <h2>1. 어떤 정보를 저장하나요</h2>
+  <table>
+    <tr><th>항목</th><th>왜 필요한가요</th><th>얼마나 보관하나요</th></tr>
+    <tr><td>닉네임</td><td>랭킹 표시, 계정 구분</td><td>계정을 삭제할 때까지</td></tr>
+    <tr><td>연령대 (10대·20대 …)<br><span class="sub">입력한 나이 숫자는 저장하지 않아요</span></td><td>만 14세 미만 가입 제한, 이용자 연령대 통계</td><td>계정을 삭제할 때까지</td></tr>
+    <tr><td>게임 기록 (보유 카드, 주문, 거래 내역, 젬 잔액)</td><td>모의투자 게임 운영</td><td>계정을 삭제할 때까지</td></tr>
+    <tr><td>익명 계정 ID</td><td>이 브라우저를 내 계정으로 알아보기 위해 자동으로 만들어져요</td><td>계정을 삭제할 때까지</td></tr>
+    <tr><td>마지막 접속 시각, 방문한 날짜</td><td>"지금 접속 중", "오늘 방문" 통계</td><td>방문 날짜는 60일 뒤 삭제</td></tr>
+    <tr><td>복구 코드 (만든 경우)</td><td>다른 기기에서 계정 불러오기</td><td>원래 코드가 아닌 암호화된 값(해시)만 저장해요</td></tr>
+  </table>
+  <p>이름, 전화번호, 이메일, 주소, 결제 정보는 받지 않아요. 젬은 충전·환전·현금화가 모두 불가능해서 결제 기능 자체가 없어요.</p>
+
+  <h2>2. 만 14세 미만</h2>
+  <p>만 14세 미만은 법정대리인(보호자) 동의가 필요해서 가입할 수 없어요. 나이는 스스로 입력한 값이라, 만 14세 미만이 가입한 사실을 알게 되면 운영자가 계정을 삭제할 수 있어요.</p>
+
+  <h2>3. 브라우저에 저장하는 것</h2>
+  <p>로그인 상태를 유지하려고 이 브라우저의 저장 공간(localStorage)에 로그인 토큰을 저장해요. 광고나 추적용 쿠키는 쓰지 않아요. 홈 화면 추가 안내를 닫았다는 표시도 같은 곳에 저장해요.</p>
+
+  <h2>4. 함께 쓰는 서비스 (처리 위탁·국외 이전)</h2>
+  <table>
+    <tr><th>서비스</th><th>하는 일</th><th>위치</th></tr>
+    <tr><td>Supabase</td><td>계정과 게임 데이터 저장, 익명 로그인. 보안을 위해 접속 IP가 인증 로그에 일정 기간 남을 수 있어요.</td><td>데이터베이스: 서울 리전</td></tr>
+    <tr><td>GitHub Pages</td><td>사이트 파일 제공. 접속 기록(IP 등)은 GitHub이 자체 정책에 따라 처리해요.</td><td>미국 등</td></tr>
+    <tr><td>jsDelivr, Google Fonts</td><td>프로그램 파일과 글꼴 제공. 파일을 받을 때 IP 주소가 전달돼요.</td><td>전 세계 서버</td></tr>
+  </table>
+  <p>이 외의 곳에 정보를 팔거나 넘기지 않아요.</p>
+
+  <h2>5. 내 정보 지우기</h2>
+  <ul>
+    <li>거래 화면 맨 아래 <b>내 계정 삭제</b>를 두 번 누르면 닉네임, 연령대, 자산, 거래 기록, 접속 기록이 바로 모두 지워져요. 되돌릴 수 없어요.</li>
+    <li><b>내 계정 처음부터 다시 시작</b>은 닉네임은 두고 자산과 기록만 처음 상태로 돌려요.</li>
+    <li>브라우저 기록을 지우면 이 기기에서 계정을 잃어버려요. 복구 코드가 없다면 운영자에게 삭제를 요청해 주세요.</li>
+  </ul>
+
+  <h2>6. 운영 규칙</h2>
+  <ul>
+    <li>욕설, 혐오 표현, 운영자를 사칭하는 닉네임은 쓸 수 없어요. 걸러지지 않았더라도 운영자가 닉네임을 바꾸거나 거래를 정지할 수 있어요.</li>
+    <li>여러 계정으로 랭킹을 조작하거나 사이트에 무리를 주는 행동을 하면 계정을 정지하거나 초기화할 수 있어요.</li>
+    <li>시즌이 바뀌면 모든 참가자의 자산이 시작 젬으로 초기화될 수 있어요.</li>
+    <li>기준가는 PriceCharting의 PSA 10 시세를 환율로 환산한 값이고, 그 사이의 잔움직임과 [가상] 뉴스는 시뮬레이션이에요.</li>
+  </ul>
+
+  <h2>7. 문의</h2>
+  <p>개인정보, 계정 삭제 요청, 그 밖의 문의는 유튜브 채널 <b>포켓코딩</b>의 댓글이나 커뮤니티 탭으로 남겨 주세요.</p>
+  <p class="sub">안내 내용이 바뀌면 이 페이지에 시행일과 함께 알려 드려요.</p>
+</main>
+</body>
+</html>

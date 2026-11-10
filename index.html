@@ -15,7 +15,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Do+Hyeon&family=IBM+Plex+Sans+KR:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
-<link rel="stylesheet" href="style.css?v=4">
+<link rel="stylesheet" href="style.css?v=5">
 </head>
 <body>
 <div class="loading" id="loading">젬 거래소에 연결하는 중…</div>
@@ -33,7 +33,8 @@
     <label class="f" for="rCode">복구 코드<div class="inp"><input id="rCode" maxlength="14" placeholder="ABCD-EFGH-JKLM" autocapitalize="characters"></div></label>
     <button class="mini" id="rGo2">계정 불러오기</button>
   </details>
-  <p class="hint">나이는 연령대(10대, 20대 …)로만 저장해요. 만 14세 미만은 보호자 동의가 필요해서 지금은 가입할 수 없어요. 계정은 이 기기의 브라우저에 연결돼요.</p>
+  <p class="hint">저장하는 것은 닉네임, 연령대(10대, 20대 … 나이 숫자는 저장 안 해요), 게임 기록뿐이에요. 만 14세 미만은 보호자 동의가 필요해서 지금은 가입할 수 없어요. 계정은 이 기기의 브라우저에 연결돼요. <a href="privacy.html">개인정보 처리 안내</a></p>
+  <p class="disclaim">젬 거래소는 개인이 만든 <b>비공식 팬 사이트</b>로, 닌텐도·크리처스·게임프리크·주식회사 포켓몬과 아무 관련이 없어요. 젬은 <b>실제 돈과 바꿀 수 없는</b> 가상 화폐이고, 이 사이트의 내용은 실제 투자 조언이 아니에요.</p>
 </section>
 
 <div id="app" hidden>
@@ -161,20 +162,22 @@
 </div>
 
 <div class="foot">
+  <p class="disclaim">젬 거래소는 개인이 만든 <b>비공식 팬 사이트</b>로, 닌텐도·크리처스·게임프리크·주식회사 포켓몬과 아무 관련이 없어요. 젬은 <b>실제 돈과 바꿀 수 없는</b> 가상 화폐이고, 이 사이트의 내용은 실제 투자 조언이 아니에요.</p>
   <p>젬은 이 사이트 안에서만 쓰는 가상 화폐예요. 1젬은 시세 1원에 맞춘 단위일 뿐 현금 가치가 없고, 충전·환전·현금화가 모두 불가능해요. 모든 종목은 PSA 10 등급 카드 기준이에요. 기준가는 PriceCharting의 PSA 10 시세를 환율로 환산한 값이고, [실거래]·[PSA 팝] 뉴스는 실제 데이터, [가상] 뉴스는 시뮬레이션이에요. 가격의 잔움직임은 시뮬레이션이에요. 포켓몬 카드 명칭은 각 권리자의 상표이며, 이 사이트는 포켓몬 컴퍼니와 관련이 없어요.</p>
   <div class="keep">
     <span>기기를 바꾸거나 브라우저 기록을 지워도 계정을 이어 쓰려면 복구 코드를 만들어 두세요.</span>
     <button class="mini" id="codeBtn">복구 코드 만들기</button>
     <span class="num codebox" id="codeBox" hidden></span>
   </div>
-  <button class="reset" id="reset">내 계정 처음부터 다시 시작</button>
+  <div class="footlinks"><a href="privacy.html">개인정보 처리 안내 · 이용 안내</a><button class="reset" id="reset">내 계정 처음부터 다시 시작</button><button class="reset" id="delMe">내 계정 삭제</button></div>
 </div>
 </div>
+<div class="idle" id="idle" hidden><div><b>잠시 쉬는 중이에요</b><span>10분 동안 움직임이 없어서 시세 받기를 멈췄어요.<br>화면 아무 곳이나 누르면 바로 이어져요.</span></div></div>
 <div class="toast" id="toast" hidden></div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
-<script src="config.js?v=4"></script>
-<script src="common.js?v=4"></script>
-<script src="app.js?v=4"></script>
+<script src="config.js?v=5"></script>
+<script src="common.js?v=5"></script>
+<script src="app.js?v=5"></script>
 </body>
 </html>

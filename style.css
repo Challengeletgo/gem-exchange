@@ -32,6 +32,14 @@ header{display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding-block:6px
 .livebar span{display:inline-flex;align-items:center;gap:6px}.livebar b{color:var(--fg);font-weight:600}
 @keyframes lvp{50%{opacity:.35}}
 @media (max-width:640px){.chip.live{display:none}}
+.disclaim{font-size:12px;line-height:1.6;color:var(--mute);border-left:3px solid var(--warn);padding:6px 10px;margin:10px 0;background:#ffc24d0d;border-radius:0 6px 6px 0}
+.disclaim b{color:var(--fg);font-weight:600}
+.footlinks{display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center;margin-top:10px}
+.footlinks a,.gate .hint a{color:var(--gem2)}
+.idle{position:fixed;inset:0;z-index:60;display:grid;place-items:center;background:#0d1122cc;backdrop-filter:blur(3px);padding:16px}
+.idle>div{max-width:340px;text-align:center;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:22px 20px;display:grid;gap:8px}
+.idle b{font-family:var(--f-disp);font-size:20px;font-weight:400}.idle span{font-size:13px;color:var(--mute);line-height:1.6}
+.idle[hidden]{display:none}
 .chip.op{background:none;color:var(--warn);border-color:#ffc24d66}
 .wallet{margin-left:auto;display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end}
 .wallet .k{font-size:11px;color:var(--mute);letter-spacing:.04em;display:block}
