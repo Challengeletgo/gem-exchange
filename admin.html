@@ -9,7 +9,7 @@
 <link rel="icon" href="icon-192.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Do+Hyeon&family=IBM+Plex+Sans+KR:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
-<link rel="stylesheet" href="style.css?v=5">
+<link rel="stylesheet" href="style.css?v=6">
 </head>
 <body>
 <div class="loading" id="loading">운영자 권한을 확인하는 중…</div>
@@ -71,7 +71,7 @@
   <div class="form2">
     <label class="f num-in" for="gAmt">지급 젬 (1인당)<div class="inp"><input id="gAmt" inputmode="numeric" placeholder="예) 500000"><em>젬</em></div></label>
     <label class="f" for="gNote">메모 (뉴스에 함께 표시)<div class="inp"><input id="gNote" maxlength="40" placeholder="예) 구독자 100명 기념"></div></label>
-    <label class="chk wide" style="display:flex;gap:8px;font-size:12.5px;color:var(--mute)"><input type="checkbox" id="gProfit"> 랭킹 수익으로 인정 (체크하지 않으면 받은 젬으로 계산돼 순위에는 영향이 없어요)</label>
+    <p class="hint wide" style="margin:0">운영자가 준 젬은 '받은 젬'으로 계산돼서 순수익과 랭킹에는 들어가지 않아요.</p>
     <button class="primary wide" id="gAll">정지되지 않은 참가자 전원에게 지급</button>
   </div>
 </section>
@@ -82,8 +82,8 @@
 </div>
 <div class="toast" id="toast" hidden></div>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
-<script src="config.js?v=5"></script>
-<script src="common.js?v=5"></script>
-<script src="admin.js?v=5"></script>
+<script src="config.js?v=6"></script>
+<script src="common.js?v=6"></script>
+<script src="admin.js?v=6"></script>
 </body>
 </html>

@@ -1117,3 +1117,30 @@ begin
   delete from presence where uid = auth.uid();
   delete from visits where uid = auth.uid();
 end $$;
+
+-- 006: 운영자가 준 젬은 언제나 순수익에서 제외 (받은 젬 = injected 에 더함)
+create or replace function public.admin_bonus(p_id uuid, p_amount numeric, p_as_profit boolean default false) returns void
+language plpgsql security definer set search_path = public as $$
+begin
+  perform _need_admin();
+  if p_amount is null or p_amount = 0 then raise exception '금액을 확인해 주세요'; end if;
+  update players set cash = cash + p_amount, bonus = bonus + p_amount, injected = injected + p_amount where id = p_id;
+  if not found then raise exception '없는 참가자예요'; end if;
+  insert into history (player_id, what, amount) values (p_id, '운영자 지급', p_amount);
+end $$;
+
+create or replace function public.admin_gift_all(p_amount numeric, p_note text default null, p_as_profit boolean default false) returns int
+language plpgsql security definer set search_path = public as $$
+declare n int;
+begin
+  perform _need_admin();
+  if p_amount is null or p_amount <= 0 then raise exception '금액을 확인해 주세요'; end if;
+  update players set cash = cash + p_amount, bonus = bonus + p_amount, injected = injected + p_amount where not banned;
+  get diagnostics n = row_count;
+  insert into history (player_id, what, amount) select id, '운영자 선물' || coalesce(' · ' || nullif(trim(p_note), ''), ''), p_amount from players where not banned;
+  insert into news (body, kind) values (format('[이벤트] 참가자 전원에게 %s젬을 지급했어요%s', to_char(p_amount, 'FM999,999,999,999'), coalesce(' · ' || nullif(trim(p_note), ''), '')), 'event');
+  return n;
+end $$;
+
+-- 확인용: 지금까지 운영자 지급이 있었던 참가자
+select p.name, p.bonus, p.injected, (select coalesce(sum(amount),0) from public.history h where h.player_id = p.id and h.what like '운영자%') gifts from public.players p where p.bonus <> 0;

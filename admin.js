@@ -54,7 +54,7 @@ $('oSaveCfg').onclick = () => {
 $('oSaveFilter').onclick = () => call('admin_set_filter', { p_words: $('cFilter').value }, '금칙어를 저장했어요').then(loadFilter);
 async function loadFilter() { const r = await sb.rpc('admin_get_filter'); if (!r.error) $('cFilter').value = r.data || ''; }
 $('gAll').onclick = () => { const amt = Math.floor(num(String($('gAmt').value).replace(/,/g, ''))); if (!(amt > 0)) return toast('지급할 젬을 입력해 주세요.');
-  armed($('gAll'), `1인당 ${fmt(amt)}젬, 한 번 더 누르면 지급해요`, () => call('admin_gift_all', { p_amount: amt, p_note: $('gNote').value.trim() || null, p_as_profit: $('gProfit').checked }, `전원에게 ${fmt(amt)}젬을 지급했어요`)); };
+  armed($('gAll'), `1인당 ${fmt(amt)}젬, 한 번 더 누르면 지급해요`, () => call('admin_gift_all', { p_amount: amt, p_note: $('gNote').value.trim() || null, p_as_profit: false }, `전원에게 ${fmt(amt)}젬을 지급했어요`)); };
 $('oSeasonReset').onclick = () => armed($('oSeasonReset'), '정말 전원 초기화? 한 번 더', () => call('admin_season_reset', { p_season: $('newSeason').value.trim() || null }, '모든 참가자를 새 시즌으로 초기화했어요'));
 $('tokenNew').onclick = () => armed($('tokenNew'), '이전 토큰이 끊겨요. 한 번 더', async () => {
   const a = new Uint8Array(24); crypto.getRandomValues(a); const t = 'gem_' + Array.from(a, x => x.toString(16).padStart(2, '0')).join('');
