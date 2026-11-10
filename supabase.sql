@@ -689,3 +689,325 @@ exception when undefined_object then null; end $$;
 -- 매일 07:30 KST(22:30 UTC) 환율 요청, 07:33 반영 → 08:00 개장 전 1시간에 걸쳐 새 기준가로 이동
 select cron.schedule('gem-fx-request', '30 22 * * *', $$select public.fx_request()$$);
 select cron.schedule('gem-fx-apply', '33 22 * * *', $$select public.fx_apply()$$);
+
+
+-- =====================================================================
+--  젬 거래소 업데이트 002 (기존 데이터 보존: 표는 추가만, 함수는 교체만)
+--  - 5초 틱 + 15초봉
+--  - PSA 10 기준 시세
+--  - 출석 보상 / 운영자 전원 지급
+--  - 실거래 고래·물량 이동 뉴스, PSA 팝 증가 뉴스
+--  - 계정 복구 코드
+-- =====================================================================
+alter table public.config add column if not exists daily_bonus numeric not null default 100000;
+alter table public.config add column if not exists whale_threshold numeric not null default 30000000;
+alter table public.players add column if not exists last_daily date;
+alter table public.players add column if not exists recovery_hash text;
+alter table public.news add column if not exists kind text not null default 'sim';
+
+create table if not exists public.candles_15 (
+  sym text references public.cards on delete cascade, t timestamptz,
+  o numeric, h numeric, l numeric, c numeric, v numeric not null default 0,
+  primary key (sym, t)
+);
+alter table public.candles_15 enable row level security;
+drop policy if exists r on public.candles_15; create policy r on public.candles_15 for select using (true);
+
+create table if not exists public.psa_pop (
+  sym text references public.cards on delete cascade, checked_on date not null,
+  pop10 int not null, pop_total int, primary key (sym, checked_on)
+);
+alter table public.psa_pop enable row level security;
+drop policy if exists r on public.psa_pop; create policy r on public.psa_pop for select using (true);
+
+-- ---------- 시세 엔진: 5초 틱, 15초봉 ----------
+create or replace function public.market_tick() returns void
+language plpgsql security definer set search_path = public as $$
+declare st market_state; c cards; b numeric; r double precision; np numeric; mn timestamptz := date_trunc('minute', now());
+        q15 timestamptz := to_timestamp(floor(extract(epoch from now()) / 15) * 15);
+        today date := (now() at time zone 'Asia/Seoul')::date; bv numeric; sv numeric; gap double precision; k cards;
+begin
+  select * into st from market_state where id = 1 for update;
+  if not market_open() then
+    if st.is_open then update market_state set is_open = false, last_tick = now() where id = 1;
+      insert into news (body, kind) select format('[장 마감] %s:00까지 가격이 멈춰요. 예약 주문은 계속 받아요.', lpad(close_end_h::text, 2, '0')), 'event' from config where id = 1; end if;
+    return;
+  end if;
+
+  if st.last_open_date is distinct from today then
+    for c in select * from cards for update loop
+      select coalesce(sum(qty * limit_price) filter (where side = 'buy'), 0), coalesce(sum(qty * limit_price) filter (where side = 'sell'), 0)
+        into bv, sv from orders where sym = c.sym and status = 'open';
+      gap := 0;
+      if bv + sv > 0 then gap := ((bv - sv) / (bv + sv)) * least(0.06, 0.01 + (bv + sv) / (c.base_krw * 200)); end if;
+      b := _base_now(c);
+      np := c.price * exp(gap + 0.5 * ln(b / c.price));
+      update cards set price = np, day_ref = np, flow = 0, updated_at = now() where sym = c.sym;
+      insert into candles values (c.sym, mn, c.price, greatest(c.price, np), least(c.price, np), np, 0)
+        on conflict (sym, t) do update set h = greatest(candles.h, excluded.h), l = least(candles.l, excluded.l), c = excluded.c;
+      insert into candles_15 values (c.sym, q15, c.price, greatest(c.price, np), least(c.price, np), np, 0)
+        on conflict (sym, t) do update set h = greatest(candles_15.h, excluded.h), l = least(candles_15.l, excluded.l), c = excluded.c;
+      if bv + sv > 0 then
+        insert into news (sym, up, mag, body, kind) values (c.sym, gap >= 0, abs(gap),
+          format('[동시호가] %s %s(%s) · %s 대기 우위로 %s%% 출발', c.name, c.rarity, c.lang, case when gap >= 0 then '매수' else '매도' end, to_char(gap * 100, 'FMS990.00')), 'real');
+      end if;
+    end loop;
+    insert into news (body, kind) values ('[개장] 오늘 장이 열렸어요. 대기 중이던 예약 주문을 체결해요.', 'event');
+    update market_state set last_open_date = today, is_open = true, last_tick = now() where id = 1;
+    perform _match_orders(null); perform _liquidate();
+    return;
+  end if;
+
+  for c in select * from cards for update loop
+    b := _base_now(c);
+    r := 0.00025 * ln(b / c.price) + c.vol * 0.00057 * _gauss() + greatest(-0.03, least(0.03, c.flow / (c.base_krw * 300)));
+    if c.shock_ticks > 0 then r := r + c.shock; end if;
+    np := greatest(1, c.price * exp(r));
+    update cards set price = np, flow = 0, shock_ticks = greatest(0, shock_ticks - 1), updated_at = now() where sym = c.sym;
+    insert into candles values (c.sym, mn, c.price, greatest(c.price, np), least(c.price, np), np, abs(r) * 1000 + abs(c.flow) / c.base_krw)
+      on conflict (sym, t) do update set h = greatest(candles.h, excluded.h), l = least(candles.l, excluded.l), c = excluded.c, v = candles.v + excluded.v;
+    insert into candles_15 values (c.sym, q15, c.price, greatest(c.price, np), least(c.price, np), np, abs(r) * 1000 + abs(c.flow) / c.base_krw)
+      on conflict (sym, t) do update set h = greatest(candles_15.h, excluded.h), l = least(candles_15.l, excluded.l), c = excluded.c, v = candles_15.v + excluded.v;
+  end loop;
+
+  if random() < 0.02 then
+    select * into k from cards order by random() limit 1;
+    gap := (0.03 + random() * 0.07) * (case when random() < 0.55 then 1 else -1 end);
+    update cards set shock = gap / 12, shock_ticks = 12 where sym = k.sym;
+    insert into news (sym, up, mag, body, kind) values (k.sym, gap > 0, abs(gap), format(
+      (case when gap > 0 then (array['해외 유명 개봉 영상에서 %s 등장, 관심 급증','대형 컬렉터 %s 매집 포착','%s PSA 10 매물 품귀','%s 바인더 인증 유행','%s 매물 급감'])[1 + floor(random() * 5)::int]
+            else (array['%s 재판 루머 확산','%s PSA 10 매물 급증','%s 대량 매물 출회','%s 가품 유통 경보','%s 관심 식었다는 여론'])[1 + floor(random() * 5)::int] end),
+      k.name || ' ' || k.rarity || ' (' || k.lang || ')'), 'sim');
+  end if;
+
+  perform _match_orders(null);
+  perform _liquidate();
+  update market_state set is_open = true, last_tick = now() where id = 1;
+  delete from candles_15 where t < now() - interval '6 hours';
+  delete from candles where t < now() - interval '3 days';
+  delete from news where at < now() - interval '3 days';
+end $$;
+
+-- ---------- 실거래 고래 · 물량 이동 뉴스 (거래 기록에서 자동 생성) ----------
+create or replace function public._trade_news() returns trigger
+language plpgsql security definer set search_path = public as $$
+declare th numeric; c cards; amt numeric := abs(coalesce(new.amount, 0)); prev history; pc cards; label text;
+begin
+  if new.sym is null then return new; end if;
+  select whale_threshold into th from config where id = 1;
+  select * into c from cards where sym = new.sym;
+  if not found then return new; end if;
+  label := c.name || ' ' || c.rarity || '(' || c.lang || ')';
+  -- 물량 이동: 같은 참가자가 10분 안에 큰 규모로 다른 종목을 팔고 이 종목을 삼
+  if new.what in ('매수', '예약 매수 체결') and amt >= th / 2 then
+    select * into prev from history where player_id = new.player_id and what in ('매도', '예약 매도 체결') and sym <> new.sym
+      and at > now() - interval '10 minutes' and abs(amount) >= th / 2 order by at desc limit 1;
+    if found then
+      select * into pc from cards where sym = prev.sym;
+      insert into news (sym, up, mag, body, kind) values (new.sym, true, 0, format('[물량 이동] 약 %s젬 규모 자금이 %s → %s로 이동',
+        to_char(round(least(amt, abs(prev.amount)) / 10000), 'FM999,999,999') || '만', pc.name || ' ' || pc.rarity || '(' || pc.lang || ')', label), 'real');
+      return new;
+    end if;
+  end if;
+  if amt >= th and (new.what in ('매수', '매도', '예약 매수 체결', '예약 매도 체결') or new.what like '%x 진입') then
+    insert into news (sym, up, mag, body, kind) values (new.sym, new.what like '%매수%' or new.what like '롱%', 0,
+      format('[고래 경보] %s %s %s젬 체결', label,
+        case when new.what like '%매수%' then '대량 매수' when new.what like '%매도%' then '대량 매도' when new.what like '롱%' then '대형 롱 포지션' else '대형 숏 포지션' end,
+        to_char(round(amt / 10000), 'FM999,999,999') || '만'), 'real');
+  end if;
+  return new;
+end $$;
+drop trigger if exists trade_news on public.history;
+create trigger trade_news after insert on public.history for each row execute function public._trade_news();
+
+-- ---------- PSA 팝 증가 뉴스 (예약 작업이 하루 한 번 호출) ----------
+-- p = {"UMB-PRE": {"pop10": 5487, "total": 17990}, ...}
+create or replace function public.apply_psa_pop(p jsonb) returns int
+language plpgsql security definer set search_path = public as $$
+declare k text; v jsonb; c cards; last psa_pop; n int := 0; p10 int; tot int; inc int; today date := (now() at time zone 'Asia/Seoul')::date; s double precision;
+begin
+  for k, v in select * from jsonb_each(p) loop
+    select * into c from cards where sym = k;
+    if not found then continue; end if;
+    p10 := (v->>'pop10')::int; tot := nullif(v->>'total', '')::int;
+    if p10 is null or p10 < 0 then continue; end if;
+    select * into last from psa_pop where sym = k and checked_on < today order by checked_on desc limit 1;
+    insert into psa_pop values (k, today, p10, tot) on conflict (sym, checked_on) do update set pop10 = excluded.pop10, pop_total = excluded.pop_total;
+    if last.sym is not null then
+      inc := p10 - last.pop10;
+      if inc > 0 then
+        s := -least(0.03, inc::double precision / greatest(last.pop10, 1) * 2);
+        update cards set shock = s / 12, shock_ticks = 12 where sym = k;
+        insert into news (sym, up, mag, body, kind) values (k, false, abs(s),
+          format('[PSA 팝] %s %s(%s) PSA 10 +%s장 → 누적 %s장', c.name, c.rarity, c.lang, to_char(inc, 'FM999,999'), to_char(p10, 'FM999,999,999')), 'psa');
+      end if;
+    end if;
+    n := n + 1;
+  end loop;
+  return n;
+end $$;
+
+-- ---------- 출석 보상 / 운영자 지급 ----------
+create or replace function public.claim_daily() returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare pl players; amt numeric; today date := (now() at time zone 'Asia/Seoul')::date;
+begin
+  pl := _trader();
+  select daily_bonus into amt from config where id = 1;
+  if amt is null or amt <= 0 then raise exception '지금은 출석 보상이 없어요'; end if;
+  if pl.last_daily = today then raise exception '오늘 출석 보상은 이미 받았어요. 내일 다시 와 주세요'; end if;
+  update players set cash = cash + amt, injected = injected + amt, last_daily = today where id = pl.id;
+  insert into history (player_id, what, amount) values (pl.id, '출석 보상', amt);
+  return jsonb_build_object('amount', amt);
+end $$;
+
+drop function if exists public.admin_bonus(uuid, numeric);
+create or replace function public.admin_bonus(p_id uuid, p_amount numeric, p_as_profit boolean default false) returns void
+language plpgsql security definer set search_path = public as $$
+begin
+  perform _need_admin();
+  if p_amount is null or p_amount = 0 then raise exception '금액을 확인해 주세요'; end if;
+  update players set cash = cash + p_amount, bonus = bonus + p_amount,
+         injected = injected + (case when p_as_profit then 0 else p_amount end) where id = p_id;
+  insert into history (player_id, what, amount) values (p_id, '운영자 지급', p_amount);
+end $$;
+
+create or replace function public.admin_gift_all(p_amount numeric, p_note text default null, p_as_profit boolean default false) returns int
+language plpgsql security definer set search_path = public as $$
+declare n int;
+begin
+  perform _need_admin();
+  if p_amount is null or p_amount <= 0 then raise exception '금액을 확인해 주세요'; end if;
+  update players set cash = cash + p_amount, bonus = bonus + p_amount,
+         injected = injected + (case when p_as_profit then 0 else p_amount end) where not banned;
+  get diagnostics n = row_count;
+  insert into history (player_id, what, amount) select id, '운영자 선물' || coalesce(' · ' || nullif(trim(p_note), ''), ''), p_amount from players where not banned;
+  insert into news (body, kind) values (format('[이벤트] 참가자 전원에게 %s젬을 지급했어요%s', to_char(p_amount, 'FM999,999,999,999'), coalesce(' · ' || nullif(trim(p_note), ''), '')), 'event');
+  return n;
+end $$;
+
+create or replace function public.admin_set_config(p jsonb) returns void
+language plpgsql security definer set search_path = public as $$
+begin
+  perform _need_admin();
+  update config set
+    season = coalesce(p->>'season', season),
+    start_cash = greatest(1000, coalesce((p->>'start_cash')::numeric, start_cash)),
+    refill_amount = greatest(0, coalesce((p->>'refill_amount')::numeric, refill_amount)),
+    refill_thr_pct = least(100, greatest(0, coalesce((p->>'refill_thr_pct')::numeric, refill_thr_pct))),
+    refill_cool_h = greatest(0, coalesce((p->>'refill_cool_h')::numeric, refill_cool_h)),
+    max_lev = least(100, greatest(1, coalesce((p->>'max_lev')::int, max_lev))),
+    fee_pct = least(5, greatest(0, coalesce((p->>'fee_pct')::numeric, fee_pct))),
+    notice = coalesce(p->>'notice', notice),
+    close_start_h = least(23, greatest(0, coalesce((p->>'close_start_h')::int, close_start_h))),
+    close_end_h = least(24, greatest(0, coalesce((p->>'close_end_h')::int, close_end_h))),
+    max_open_orders = least(100, greatest(1, coalesce((p->>'max_open_orders')::int, max_open_orders))),
+    daily_bonus = greatest(0, coalesce((p->>'daily_bonus')::numeric, daily_bonus)),
+    whale_threshold = greatest(100000, coalesce((p->>'whale_threshold')::numeric, whale_threshold))
+  where id = 1;
+end $$;
+
+-- ---------- 계정 복구 코드 ----------
+create or replace function public.make_recovery_code() returns text
+language plpgsql security definer set search_path = public as $$
+declare pl players; code text; alphabet text := 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; b bytea := gen_random_bytes(12); i int;
+begin
+  pl := _trader();
+  code := '';
+  for i in 0..11 loop code := code || substr(alphabet, (get_byte(b, i) % 32) + 1, 1); if i in (3, 7) then code := code || '-'; end if; end loop;
+  update players set recovery_hash = encode(digest(code, 'sha256'), 'hex') where id = pl.id;
+  return code;
+end $$;
+
+create or replace function public.recover_account(p_name text, p_code text) returns void
+language plpgsql security definer set search_path = public as $$
+declare me uuid := auth.uid(); old players;
+begin
+  if me is null then raise exception '로그인이 필요해요'; end if;
+  if exists (select 1 from players where id = me) then raise exception '이 기기에는 이미 다른 계정이 있어요. "내 계정 처음부터 다시 시작" 대신 운영자에게 문의해 주세요'; end if;
+  select * into old from players where lower(name) = lower(trim(p_name)) for update;
+  if not found or old.recovery_hash is null or old.recovery_hash <> encode(digest(upper(trim(p_code)), 'sha256'), 'hex') then
+    perform pg_sleep(1); raise exception '닉네임 또는 복구 코드가 맞지 않아요'; end if;
+  update players set name = left(old.name, 12) || '~' || substr(md5(random()::text), 1, 6) where id = old.id;
+  insert into players (id, name, age_group, cash, injected, refills, last_refill, bonus, banned, season, joined_at, last_daily, recovery_hash)
+    values (me, old.name, old.age_group, old.cash, old.injected, old.refills, old.last_refill, old.bonus, old.banned, old.season, old.joined_at, old.last_daily, old.recovery_hash);
+  update holdings set player_id = me where player_id = old.id;
+  update positions set player_id = me where player_id = old.id;
+  update orders set player_id = me where player_id = old.id;
+  update history set player_id = me where player_id = old.id;
+  update admins set user_id = me where user_id = old.id;
+  delete from players where id = old.id;
+  insert into history (player_id, what, amount) values (me, '다른 기기에서 계정 복구', 0);
+end $$;
+
+create or replace function public.my_summary() returns jsonb
+language sql stable security definer set search_path = public as $$
+  select case when p.id is null then null else jsonb_build_object(
+    'player', to_jsonb(p) - 'recovery_hash' || jsonb_build_object('has_recovery', p.recovery_hash is not null),
+    'equity', player_equity(p.id),
+    'holdings', coalesce((select jsonb_agg(to_jsonb(h)) from holdings h where h.player_id = p.id), '[]'),
+    'positions', coalesce((select jsonb_agg(to_jsonb(x) order by x.opened_at) from positions x where x.player_id = p.id), '[]'),
+    'orders', coalesce((select jsonb_agg(to_jsonb(o) order by o.created_at desc) from orders o where o.player_id = p.id and (o.status = 'open' or o.done_at > now() - interval '2 days')), '[]'),
+    'history', coalesce((select jsonb_agg(to_jsonb(y)) from (select * from history where player_id = p.id order by at desc limit 60) y), '[]')
+  ) end
+  from (select auth.uid() uid) u left join players p on p.id = u.uid $$;
+
+create or replace function public.admin_overview() returns jsonb
+language plpgsql stable security definer set search_path = public as $$
+begin
+  perform _need_admin();
+  return jsonb_build_object(
+    'players', coalesce((select jsonb_agg(jsonb_build_object('id', p.id, 'name', p.name, 'age_group', p.age_group, 'joined_at', p.joined_at, 'cash', p.cash,
+                 'injected', p.injected, 'refills', p.refills, 'bonus', p.bonus, 'banned', p.banned, 'equity', player_equity(p.id)) order by p.joined_at) from players p), '[]'),
+    'open_orders', (select count(*) from orders where status = 'open'),
+    'positions', (select count(*) from positions),
+    'token_set', (select price_token_hash is not null from private_settings where id = 1),
+    'pop', coalesce((select jsonb_object_agg(sym, pop10) from (select distinct on (sym) sym, pop10 from psa_pop order by sym, checked_on desc) z), '{}'));
+end $$;
+
+-- ---------- 실행 권한 ----------
+revoke execute on function public.apply_psa_pop(jsonb), public._trade_news() from public;
+do $$ begin
+  execute 'revoke execute on function public.apply_psa_pop(jsonb), public._trade_news() from anon, authenticated';
+exception when undefined_object then null; end $$;
+
+-- ---------- 기준가 문구를 PSA 10 기준으로 ----------
+create or replace function public.fx_apply() returns text
+language plpgsql security definer set search_path = public as $$
+declare j price_jobs; r record; fx numeric; t text; msg text;
+begin
+  select * into j from price_jobs where kind = 'fx' and not done order by id desc limit 1;
+  if not found then return 'no pending job'; end if;
+  select * into r from net._http_response where id = j.req_id;
+  if not found then return 'waiting'; end if;
+  if r.status_code <> 200 then msg := 'http ' || r.status_code;
+  else
+    fx := ((r.content::jsonb)->'rates'->>'KRW')::numeric;
+    t := (r.content::jsonb)->>'time_last_update_utc';
+    perform _rebase(round(fx, 2), format('PriceCharting PSA 10 시세 · 환율 %s원 (%s)', to_char(round(fx, 2), 'FM9,990.00'), coalesce(t, '')));
+    msg := 'ok ' || fx;
+  end if;
+  update price_jobs set done = true, result = msg where id = j.id;
+  return msg;
+end $$;
+
+-- 예약 작업이 조사한 달러 시세 반영: {"UMB-PRE": 1085.47, ...} (마지막 환율로 즉시 환산)
+create or replace function public.apply_usd_prices(p jsonb) returns int
+language plpgsql security definer set search_path = public as $$
+declare k text; v jsonb; n int := 0; c cards; fx numeric; usd numeric;
+begin
+  select coalesce(nullif(substring(base_note from '환율 ([0-9,.]+)원'), ''), '0') into k from cards where base_note like '%환율%' order by base_updated_at desc limit 1;
+  fx := nullif(replace(coalesce(k, '0'), ',', ''), '')::numeric;
+  if fx is null or fx < 500 then fx := 1347.1; end if;
+  for k, v in select * from jsonb_each(p) loop
+    usd := (v #>> '{}')::numeric;
+    select * into c from cards where sym = k for update;
+    if not found or usd is null or usd <= 0 then continue; end if;
+    if c.base_usd is not null and (usd > c.base_usd * 1.5 or usd < c.base_usd / 1.5) then continue; end if; -- 급변은 무시
+    update cards set base_usd = usd, prev_base = _base_now(c), base_krw = round(usd * fx), base_asof = (now() at time zone 'Asia/Seoul')::date,
+           base_note = format('PriceCharting PSA 10 시세 · 환율 %s원', to_char(fx, 'FM9,990.00')), base_updated_at = now() where sym = k;
+    n := n + 1;
+  end loop;
+  return n;
+end $$;
+

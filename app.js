@@ -3,7 +3,7 @@ const { $, num, fmt, roundT, tickSize, esc, cname, icoHTML, isOpen, secsToSwitch
 const sb = GEM.client();
 let CFG = { close_start_h: 0, close_end_h: 8, fee_pct: 0.05, max_lev: 20, start_cash: 1000000, refill_amount: 1000000, refill_thr_pct: 10, refill_cool_h: 24, notice: '', season: '' };
 let CARDS = [], ME = null, PEND = {}, LADDER = [], CANDLES = [], LB = [];
-let sel = null, tf = 1, tab = 'hold', filt = 'ALL', mode = 'spot', rside = 'buy', busy = false, wasOpen = null;
+let sel = null, tf = 15, tab = 'hold', filt = 'ALL', mode = 'spot', rside = 'buy', busy = false, wasOpen = null;
 
 const card = s => CARDS.find(c => c.sym === s);
 const price = s => num(card(s)?.price);
@@ -30,7 +30,7 @@ async function loadPend() {
 }
 async function loadCandles() {
   if (!sel) return;
-  const r = await sb.from('candles').select('t,o,h,l,c,v').eq('sym', sel).order('t', { ascending: false }).limit(600);
+  const r = await sb.from(tf === 15 ? 'candles_15' : 'candles').select('t,o,h,l,c,v').eq('sym', sel).order('t', { ascending: false }).limit(tf === 15 ? 200 : 600);
   if (!r.error) CANDLES = (r.data || []).reverse().map(x => ({ t: new Date(x.t).getTime(), o: num(x.o), h: num(x.h), l: num(x.l), c: num(x.c), v: num(x.v) }));
 }
 async function loadLB() { const r = await sb.rpc('leaderboard'); if (!r.error) LB = r.data || []; }
@@ -49,7 +49,9 @@ async function act(fn, args, okMsg) {
 /* ---------------- render ---------------- */
 function showNews(n) {
   const c = n.sym ? card(n.sym) : null;
-  $('news').innerHTML = (c ? `<b class="${n.up ? 'up' : 'down'}">${n.up ? '▲' : '▼'} ${esc(c.name)} ${esc(c.rarity)}</b> &nbsp;` : '') + esc(n.body);
+  const K = { real: '실거래', psa: 'PSA 팝', event: '알림', sim: '가상 뉴스' }, k = n.kind || 'sim';
+  $('newsTag').textContent = K[k] || '뉴스'; $('newsTag').className = 'tag k-' + k;
+  $('news').innerHTML = (c && k === 'sim' ? `<b class="${n.up ? 'up' : 'down'}">${n.up ? '▲' : '▼'} ${esc(c.name)} ${esc(c.rarity)}</b> &nbsp;` : '') + esc(n.body);
 }
 function chg(c) { const r = num(c.day_ref) || num(c.base_krw); return (num(c.price) / r - 1) * 100; }
 function pressOf(s) { const p = PEND[s]; if (!p) return null; const b = num(p.buy_value), v = num(p.sell_value); return b + v > 0 ? { b, v, r: b / (b + v) } : null; }
@@ -92,6 +94,8 @@ function wallet() {
   $('wRet').textContent = (r >= 0 ? '+' : '') + r.toFixed(2) + '%'; $('wRet').className = 'num ' + (r >= 0 ? 'up' : 'down');
   $('meChip').textContent = `${P.name} · ${P.age_group}`;
   const can = e < num(CFG.start_cash) * num(CFG.refill_thr_pct) / 100, left = P.last_refill ? new Date(P.last_refill).getTime() + num(CFG.refill_cool_h) * 3600000 - Date.now() : 0;
+  const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Seoul' }).format(new Date()), db = $('dailyBtn');
+  db.hidden = !(num(CFG.daily_bonus) > 0) || P.last_daily === today; db.textContent = `출석 보상 +${fmt(CFG.daily_bonus)}젬 받기`;
   const rb = $('refillBtn'); rb.hidden = !can;
   if (can) { rb.disabled = left > 0; rb.textContent = left > 0 ? `재충전까지 ${Math.ceil(left / 3600000)}시간` : `파산 지원: ${fmt(CFG.refill_amount)}젬 재충전`; }
 }
@@ -99,7 +103,7 @@ function css(v) { return getComputedStyle(document.documentElement).getPropertyV
 function sizeCanvas(cv) { const dpr = window.devicePixelRatio || 1, W = cv.clientWidth, H = cv.clientHeight; if (cv.width !== W * dpr || cv.height !== H * dpr) { cv.width = W * dpr; cv.height = H * dpr; } const g = cv.getContext('2d'); g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, W, H); return [g, W, H]; }
 function series() {
   let cs = CANDLES.slice();
-  const p = price(sel), nowMin = Math.floor(Date.now() / 60000) * 60000;
+  const p = price(sel), step = tf === 15 ? 15000 : 60000, nowMin = Math.floor(Date.now() / step) * step;
   if (open() && p && cs.length) { const last = cs[cs.length - 1]; if (last.t === nowMin) { last.c = p; last.h = Math.max(last.h, p); last.l = Math.min(last.l, p); } }
   if (tf === 5) { const out = []; for (const k of cs) { const b = Math.floor(k.t / 300000) * 300000, l = out[out.length - 1]; if (l && l.t === b) { l.h = Math.max(l.h, k.h); l.l = Math.min(l.l, k.l); l.c = k.c; l.v += k.v; } else out.push({ ...k, t: b }); } cs = out; }
   return cs.slice(-100);
@@ -215,6 +219,15 @@ const openPos = side => act('open_position', { p_sym: sel, p_side: side, p_margi
 $('bLong').onclick = () => openPos('L'); $('bShort').onclick = () => openPos('S');
 $('rGo').onclick = () => act('place_order', { p_sym: sel, p_side: rside, p_qty: q3($('rQty').value), p_price: Math.round(num($('rPrice').value)) }, () => { tab = 'ord'; setTab(); return `예약 ${rside === 'buy' ? '매수' : '매도'} 주문을 걸었어요`; });
 $('refillBtn').onclick = () => act('refill', {}, d => `${fmt(d.amount)}젬을 재충전했어요. 랭킹은 순수익 기준이라 재충전 젬은 수익으로 치지 않아요.`);
+$('dailyBtn').onclick = () => act('claim_daily', {}, d => `출석 보상 ${fmt(d.amount)}젬을 받았어요. 내일 또 와 주세요!`);
+$('codeBtn').onclick = () => armed($('codeBtn'), ME?.player?.has_recovery ? '새로 만들면 이전 코드는 무효! 한 번 더' : '한 번 더 누르면 만들어요', async () => {
+  const r = await sb.rpc('make_recovery_code'); if (r.error) return toast(errMsg(r.error));
+  $('codeBox').textContent = r.data; $('codeBox').hidden = false; toast('복구 코드를 꼭 따로 적어 두세요. 다시 보여 드릴 수 없어요.'); loadMe(); });
+$('rGo2').onclick = async () => {
+  const r = await sb.rpc('recover_account', { p_name: $('rName').value.trim(), p_code: $('rCode').value.trim().toUpperCase() });
+  if (r.error) return $('gErr').textContent = errMsg(r.error);
+  await loadMe(); start(); toast('계정을 불러왔어요!');
+};
 $('reset').onclick = () => armed($('reset'), '한 번 더 누르면 초기화돼요', () => act('reset_me', {}, '시작 젬으로 새로 시작했어요'));
 
 function setMode(m) { mode = m; for (const [id, k] of [['mSpot', 'spot'], ['mFut', 'fut'], ['mRes', 'res']]) $(id).setAttribute('aria-pressed', m === k); $('spotForm').hidden = m !== 'spot'; $('futForm').hidden = m !== 'fut'; $('resForm').hidden = m !== 'res'; }
@@ -228,8 +241,9 @@ document.querySelectorAll('[data-pq]').forEach(b => b.onclick = () => { const p 
 document.querySelectorAll('[data-pm]').forEach(b => b.onclick = () => { $('margin').value = Math.floor(num(ME.player.cash) * +b.dataset.pm / (1 + (+$('lev').value) * fee())); ticket(); });
 document.querySelectorAll('[data-rp]').forEach(b => b.onclick = () => { $('rPrice').value = roundT(price(sel) * (1 + +b.dataset.rp)); ticket(); });
 ['qty', 'margin', 'lev', 'rPrice', 'rQty'].forEach(id => $(id).addEventListener('input', ticket));
-$('tf1').onclick = () => { tf = 1; $('tf1').setAttribute('aria-pressed', 'true'); $('tf5').setAttribute('aria-pressed', 'false'); drawChart(); };
-$('tf5').onclick = () => { tf = 5; $('tf5').setAttribute('aria-pressed', 'true'); $('tf1').setAttribute('aria-pressed', 'false'); drawChart(); };
+function setTf(v) { const was15 = tf === 15; tf = v; for (const [id, k] of [['tf15', 15], ['tf1', 1], ['tf5', 5]]) $(id).setAttribute('aria-pressed', tf === k);
+  if (was15 !== (tf === 15)) { CANDLES = []; drawChart(); loadCandles().then(drawChart); } else drawChart(); }
+$('tf15').onclick = () => setTf(15); $('tf1').onclick = () => setTf(1); $('tf5').onclick = () => setTf(5);
 window.addEventListener('resize', () => { drawChart(); drawLadder(); });
 
 /* ---------------- home-screen shortcut ---------------- */
@@ -238,8 +252,13 @@ const standalone = () => matchMedia('(display-mode: standalone)').matches || nav
 function installUI() {
   let dismissed = false; try { dismissed = localStorage.getItem('gem-install-off') === '1'; } catch (e) {}
   if (standalone() || dismissed) return;
-  const ios = /iphone|ipad|ipod/i.test(navigator.userAgent);
-  $('installHow').textContent = ios ? 'Safari 아래쪽 공유 버튼 → "홈 화면에 추가"를 눌러 주세요.' : '브라우저 메뉴(⋮) → "홈 화면에 추가" 또는 "앱 설치"를 눌러 주세요.';
+  const ua = navigator.userAgent, ios = /iphone|ipad|ipod/i.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
+  let how;
+  if (ios) how = /CriOS|FxiOS|EdgiOS/.test(ua) ? '아이폰: 주소창의 공유 버튼(□↑) → "홈 화면에 추가"를 눌러 주세요.' : '아이폰: Safari 아래쪽 공유 버튼(□↑) → "홈 화면에 추가"를 눌러 주세요.';
+  else if (/SamsungBrowser/.test(ua)) how = '갤럭시: 삼성 인터넷 아래쪽 메뉴(≡) → "현재 페이지 추가" → "홈 화면"을 눌러 주세요.';
+  else if (/Android/.test(ua)) how = '갤럭시·안드로이드: 크롬 오른쪽 위 메뉴(⋮) → "홈 화면에 추가" 또는 "앱 설치"를 눌러 주세요.';
+  else how = 'PC: 주소창 오른쪽의 설치 아이콘을 누르거나, 휴대폰으로 이 주소를 열어 홈 화면에 추가해 주세요.';
+  $('installHow').textContent = how;
   $('install').hidden = false;
 }
 window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); deferred = e; $('installBtn').hidden = false; });
@@ -276,7 +295,8 @@ async function boot() {
   if (ME) start(); else { $('loading').hidden = true; $('gate').hidden = false; $('gName').focus(); }
   setInterval(async () => { if (document.hidden) return; await Promise.all([loadMarket(), ME ? loadMe() : null]); if (ME && !$('app').hidden) render(); }, 5000);
   setInterval(async () => { if (document.hidden || !ME) return; await loadPend(); render(); }, 10000);
-  setInterval(async () => { if (document.hidden || !ME) return; await Promise.all([loadCandles(), loadLB()]); render(); }, 20000);
+  setInterval(async () => { if (document.hidden || !ME) return; await loadLB(); if (tf !== 15) await loadCandles(); render(); }, 20000);
+  setInterval(async () => { if (document.hidden || !ME || tf !== 15) return; await loadCandles(); drawChart(); }, 5000);
   setInterval(() => { if (!ME || $('app').hidden) return; const o = open(); if (wasOpen !== null && o !== wasOpen) { toast(o ? '장이 열렸어요!' : '장이 마감됐어요. 예약 주문만 받아요.'); loadMarket().then(loadMe).then(() => render()); } wasOpen = o; $('countdown').textContent = '개장까지 ' + hms(secsToSwitch(CFG)); }, 1000);
 }
 boot();

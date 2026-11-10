@@ -20,7 +20,7 @@ function render() {
   $('oAges').innerHTML = groups.map((g, i) => `<div><span>${g}</span><i style="width:${cnt[i] / mx * 100}%"></i><span class="num">${cnt[i]}</span></div>`).join('');
   const tb = $('oPrices');
   if (!builtPrices) {
-    tb.innerHTML = CARDS.map(c => `<tr><td class="num">${esc(c.sym)}</td><td>${esc(cname(c))} <small style="color:var(--dim)">${c.lang} · ${esc(c.set_code)}</small></td><td><input class="cell" data-usd="${esc(c.sym)}" inputmode="decimal" value="${num(c.base_usd) || ''}" aria-label="${esc(c.sym)} USD"></td><td><input class="cell" data-krw="${esc(c.sym)}" inputmode="numeric" value="${Math.round(num(c.base_krw))}" aria-label="${esc(c.sym)} 기준가"></td><td class="num" data-now="${esc(c.sym)}"></td><td class="num" style="color:var(--dim)">${esc(c.base_asof || '')}</td></tr>`).join('');
+    tb.innerHTML = CARDS.map(c => `<tr><td class="num">${esc(c.sym)}</td><td>${esc(cname(c))} <small style="color:var(--dim)">${c.lang} · ${esc(c.set_code)}</small></td><td><input class="cell" data-usd="${esc(c.sym)}" inputmode="decimal" value="${num(c.base_usd) || ''}" aria-label="${esc(c.sym)} USD"></td><td><input class="cell" data-krw="${esc(c.sym)}" inputmode="numeric" value="${Math.round(num(c.base_krw))}" aria-label="${esc(c.sym)} 기준가"></td><td class="num" data-now="${esc(c.sym)}"></td><td class="num">${OV.pop && OV.pop[c.sym] != null ? fmt(OV.pop[c.sym]) : '-'}</td><td class="num" style="color:var(--dim)">${esc(c.base_asof || '')}</td></tr>`).join('');
     builtPrices = true; fillCfg();
   }
   for (const c of CARDS) { const td = tb.querySelector(`[data-now="${c.sym}"]`); if (td) td.textContent = fmt(roundT(num(c.price))); }
@@ -31,12 +31,12 @@ function render() {
 function fillCfg() {
   $('cSeason').value = CFG.season; $('cStart').value = num(CFG.start_cash); $('cRefill').value = num(CFG.refill_amount); $('cThr').value = num(CFG.refill_thr_pct);
   $('cCool').value = num(CFG.refill_cool_h); $('cLev').value = CFG.max_lev; $('cFee').value = num(CFG.fee_pct); $('cCs').value = CFG.close_start_h; $('cCe').value = CFG.close_end_h;
-  $('cMax').value = CFG.max_open_orders; $('cNotice').value = CFG.notice;
+  $('cMax').value = CFG.max_open_orders; $('cNotice').value = CFG.notice; $('cDaily').value = num(CFG.daily_bonus); $('cWhale').value = num(CFG.whale_threshold);
 }
 async function call(fn, args, ok) { const r = await sb.rpc(fn, args); if (r.error) { toast(errMsg(r.error)); return false; } await load(); render(); if (ok) toast(ok); return true; }
 function wire() {
   const ub = $('oUsers');
-  ub.querySelectorAll('[data-give]').forEach(b => b.onclick = () => { const id = b.dataset.give, amt = Math.floor(num(ub.querySelector(`[data-bonus="${id}"]`).value)); if (!amt) return toast('지급할 젬을 입력해 주세요.'); call('admin_bonus', { p_id: id, p_amount: amt }, `${fmt(amt)}젬을 지급했어요`); });
+  ub.querySelectorAll('[data-give]').forEach(b => b.onclick = () => { const id = b.dataset.give, amt = Math.floor(num(ub.querySelector(`[data-bonus="${id}"]`).value)); if (!amt) return toast('지급할 젬을 입력해 주세요.'); call('admin_bonus', { p_id: id, p_amount: amt, p_as_profit: false }, `${fmt(amt)}젬을 지급했어요`); });
   ub.querySelectorAll('[data-ban]').forEach(b => b.onclick = () => call('admin_ban', { p_id: b.dataset.ban, p_banned: b.dataset.b === '1' }, b.dataset.b === '1' ? '거래를 정지했어요' : '정지를 해제했어요'));
   ub.querySelectorAll('[data-wipe]').forEach(b => b.onclick = () => armed(b, '한 번 더', () => call('admin_reset_player', { p_id: b.dataset.wipe }, '계정을 초기화했어요')));
 }
@@ -47,8 +47,10 @@ $('oSavePrices').onclick = () => {
 };
 $('oSaveCfg').onclick = () => {
   const n = id => num(String($(id).value).replace(/,/g, ''));
-  call('admin_set_config', { p: { season: $('cSeason').value.trim() || '시즌 1', start_cash: n('cStart'), refill_amount: n('cRefill'), refill_thr_pct: n('cThr'), refill_cool_h: n('cCool'), max_lev: n('cLev'), fee_pct: n('cFee'), close_start_h: n('cCs'), close_end_h: n('cCe'), max_open_orders: n('cMax'), notice: $('cNotice').value.trim() } }, '설정을 저장했어요').then(ok => { if (ok) fillCfg(); });
+  call('admin_set_config', { p: { season: $('cSeason').value.trim() || '시즌 1', start_cash: n('cStart'), refill_amount: n('cRefill'), refill_thr_pct: n('cThr'), refill_cool_h: n('cCool'), max_lev: n('cLev'), fee_pct: n('cFee'), close_start_h: n('cCs'), close_end_h: n('cCe'), max_open_orders: n('cMax'), daily_bonus: n('cDaily'), whale_threshold: n('cWhale'), notice: $('cNotice').value.trim() } }, '설정을 저장했어요').then(ok => { if (ok) fillCfg(); });
 };
+$('gAll').onclick = () => { const amt = Math.floor(num(String($('gAmt').value).replace(/,/g, ''))); if (!(amt > 0)) return toast('지급할 젬을 입력해 주세요.');
+  armed($('gAll'), `1인당 ${fmt(amt)}젬, 한 번 더 누르면 지급해요`, () => call('admin_gift_all', { p_amount: amt, p_note: $('gNote').value.trim() || null, p_as_profit: $('gProfit').checked }, `전원에게 ${fmt(amt)}젬을 지급했어요`)); };
 $('oSeasonReset').onclick = () => armed($('oSeasonReset'), '정말 전원 초기화? 한 번 더', () => call('admin_season_reset', { p_season: $('newSeason').value.trim() || null }, '모든 참가자를 새 시즌으로 초기화했어요'));
 $('tokenNew').onclick = () => armed($('tokenNew'), '이전 토큰이 끊겨요. 한 번 더', async () => {
   const a = new Uint8Array(24); crypto.getRandomValues(a); const t = 'gem_' + Array.from(a, x => x.toString(16).padStart(2, '0')).join('');

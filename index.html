@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>젬 거래소</title>
-<meta name="description" content="포켓몬카드 SAR 이상 영문판·일판 시세로 연습하는 모의투자 거래소">
+<meta name="description" content="포켓몬카드 SAR 이상 영문판·일판 PSA 10 시세로 연습하는 모의투자 거래소">
 <meta name="theme-color" content="#0d1122">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon-192.png">
@@ -22,12 +22,17 @@
 
 <section class="gate" id="gate" hidden aria-labelledby="gateT">
   <h1 id="gateT"><span class="logo"><span class="mark" aria-hidden="true"></span></span>젬 거래소</h1>
-  <p>포켓몬카드 실제 시세로 연습하는 모의투자 거래소예요. 가입하면 시작 젬을 드려요.</p>
+  <p>포켓몬카드 PSA 10 실제 시세로 연습하는 모의투자 거래소예요. 가입하면 시작 젬을 드려요.</p>
   <label class="f" for="gName">닉네임 (2~12자)<div class="inp"><input id="gName" maxlength="12" autocomplete="nickname" placeholder="예) 바인더수집가"></div></label>
   <label class="f" for="gAge">나이<div class="inp"><input id="gAge" inputmode="numeric" maxlength="3" placeholder="숫자만 입력"><em>세</em></div></label>
   <label class="chk"><input type="checkbox" id="gOk"><span>젬은 이 사이트 안에서만 쓰는 가상 화폐이고, 현금이나 상품으로 바꿀 수 없다는 것을 이해했어요.</span></label>
   <div class="err" id="gErr" role="alert"></div>
   <button class="primary" id="gGo">시작하기</button>
+  <details class="recov"><summary>다른 기기에서 쓰던 계정 불러오기</summary>
+    <label class="f" for="rName">닉네임<div class="inp"><input id="rName" maxlength="12"></div></label>
+    <label class="f" for="rCode">복구 코드<div class="inp"><input id="rCode" maxlength="14" placeholder="ABCD-EFGH-JKLM" autocapitalize="characters"></div></label>
+    <button class="mini" id="rGo2">계정 불러오기</button>
+  </details>
   <p class="hint">나이는 연령대(10대, 20대 …)로만 저장해요. 만 14세 미만은 보호자 동의가 필요해서 지금은 가입할 수 없어요. 계정은 이 기기의 브라우저에 연결돼요.</p>
 </section>
 
@@ -45,6 +50,7 @@
     <div class="op" aria-hidden="true">+</div>
     <div><span class="k">투자 중 (카드·선물·예약)</span><span class="v num" id="wInv">0</span><span class="gemu">젬</span></div>
     <button class="refill" id="refillBtn" hidden></button>
+    <button class="refill daily" id="dailyBtn" hidden></button>
   </div>
 </header>
 
@@ -60,13 +66,13 @@
 </div>
 
 <div class="bar2">
-  <div class="news" aria-live="polite"><span class="tag">뉴스</span><span class="txt" id="news">-</span></div>
+  <div class="news" aria-live="polite"><span class="tag" id="newsTag">뉴스</span><span class="txt" id="news">-</span></div>
   <div class="notice" id="notice" hidden></div>
 </div>
 
 <div class="grid">
   <section class="box" aria-label="종목">
-    <h3><span>종목 · SAR 이상</span><span class="mode" id="asof"></span></h3>
+    <h3><span>종목 · SAR 이상 · PSA 10 기준</span><span class="mode" id="asof"></span></h3>
     <div class="filters" role="group" aria-label="언어판">
       <button data-f="ALL" aria-pressed="true">전체</button><button data-f="EN" aria-pressed="false">영문판</button><button data-f="JP" aria-pressed="false">일판</button>
     </div>
@@ -79,9 +85,9 @@
         <div id="hIcoWrap"></div>
         <div><div class="nm" id="hName"></div><small class="num" id="hSym"></small></div>
         <div><div class="big num" id="hPrice"></div><small class="num" id="hChg"></small></div>
-        <div><small>실제 시세 기준가</small><div class="num" id="hBase" style="color:var(--mute)"></div></div>
+        <div><small>실제 시세 기준가 (PSA 10)</small><div class="num" id="hBase" style="color:var(--mute)"></div></div>
         <div class="tf" role="group" aria-label="봉 간격">
-          <button id="tf1" aria-pressed="true">1분봉</button><button id="tf5" aria-pressed="false">5분봉</button>
+          <button id="tf15" aria-pressed="true">15초봉</button><button id="tf1" aria-pressed="false">1분봉</button><button id="tf5" aria-pressed="false">5분봉</button>
         </div>
       </div>
       <div class="chartwrap"><canvas id="chart" aria-label="가격 차트"></canvas><div class="frozen" id="frozen" hidden><span>장 마감 · 차트가 멈춰 있어요</span></div></div>
@@ -153,7 +159,12 @@
 </div>
 
 <div class="foot">
-  <p>젬은 이 사이트 안에서만 쓰는 가상 화폐예요. 1젬은 시세 1원에 맞춘 단위일 뿐 현금 가치가 없고, 충전·환전·현금화가 모두 불가능해요. 기준가는 PriceCharting 미등급 시세를 환율로 환산한 값이고, 그 위의 움직임과 뉴스는 시뮬레이션이에요. 포켓몬 카드 명칭은 각 권리자의 상표이며, 이 사이트는 포켓몬 컴퍼니와 관련이 없어요.</p>
+  <p>젬은 이 사이트 안에서만 쓰는 가상 화폐예요. 1젬은 시세 1원에 맞춘 단위일 뿐 현금 가치가 없고, 충전·환전·현금화가 모두 불가능해요. 모든 종목은 PSA 10 등급 카드 기준이에요. 기준가는 PriceCharting의 PSA 10 시세를 환율로 환산한 값이고, [실거래]·[PSA 팝] 뉴스는 실제 데이터, [가상] 뉴스는 시뮬레이션이에요. 가격의 잔움직임은 시뮬레이션이에요. 포켓몬 카드 명칭은 각 권리자의 상표이며, 이 사이트는 포켓몬 컴퍼니와 관련이 없어요.</p>
+  <div class="keep">
+    <span>기기를 바꾸거나 브라우저 기록을 지워도 계정을 이어 쓰려면 복구 코드를 만들어 두세요.</span>
+    <button class="mini" id="codeBtn">복구 코드 만들기</button>
+    <span class="num codebox" id="codeBox" hidden></span>
+  </div>
   <button class="reset" id="reset">내 계정 처음부터 다시 시작</button>
 </div>
 </div>

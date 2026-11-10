@@ -181,4 +181,9 @@ html{-webkit-text-size-adjust:100%}
 .install{display:flex;gap:10px;align-items:center;flex-wrap:wrap;background:var(--panel);border:1px solid #b98cff55;border-radius:12px;padding:10px 14px;margin-bottom:12px;font-size:13px}
 .install p{margin:0;flex:1 1 240px;color:var(--gem2)}
 .install small{color:var(--mute)}
+.refill.daily{border-color:var(--ok);background:#4fd18b18;color:var(--ok)}
+.news .tag.k-real{background:var(--up);color:#fff}.news .tag.k-psa{background:var(--ok);color:#06210f}.news .tag.k-event{background:var(--gem);color:#160b2e}
+.recov{font-size:13px;color:var(--mute)}.recov summary{cursor:pointer}.recov[open]{display:flex;flex-direction:column;gap:10px}.recov .inp input{text-align:left;font-family:var(--f-body)}
+.keep{display:flex;gap:10px;align-items:center;flex-wrap:wrap;flex:1 1 100%;color:var(--mute)}
+.codebox{color:var(--gem2);font-size:15px;font-weight:600;letter-spacing:.05em;user-select:all}
 .loading{max-width:460px;margin:20vh auto;text-align:center;color:var(--mute)}
