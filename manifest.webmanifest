@@ -1,0 +1,16 @@
+{
+  "name": "젬 거래소",
+  "short_name": "젬 거래소",
+  "description": "포켓몬카드 시세로 연습하는 모의투자 거래소",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#0d1122",
+  "theme_color": "#0d1122",
+  "lang": "ko",
+  "icons": [
+    {"src": "icon-192.png", "sizes": "192x192", "type": "image/png"},
+    {"src": "icon-512.png", "sizes": "512x512", "type": "image/png"},
+    {"src": "icon-maskable.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable"}
+  ]
+}

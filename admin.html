@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>젬 거래소 운영자</title>
+<meta name="robots" content="noindex">
+<meta name="theme-color" content="#0d1122">
+<link rel="icon" href="icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Do+Hyeon&family=IBM+Plex+Sans+KR:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="loading" id="loading">운영자 권한을 확인하는 중…</div>
+<div id="app" hidden>
+<header>
+  <div class="logo"><div class="mark" aria-hidden="true"></div><b>젬 거래소 운영자</b></div>
+  <span class="status" id="mStatus"><i></i><span></span></span>
+  <a class="chip op" href="./">거래 화면으로</a>
+</header>
+
+<div class="opgrid">
+  <section class="box stat"><div class="k">참가자</div><div class="v num" id="oCount">0</div></section>
+  <section class="box stat"><div class="k">대기 중 예약 주문 · 선물 포지션</div><div class="v num" id="oOrders">0</div></section>
+  <section class="box stat"><div class="k">총 재충전 횟수</div><div class="v num" id="oRefill">0</div></section>
+  <section class="box stat"><div class="k">참가자 총 자산 합계</div><div class="v num" id="oTotal">0</div></section>
+</div>
+
+<div class="opcols">
+  <section class="box">
+    <h3><span>실제 시세 기준가 (1젬 = 1원 환산)</span><span class="mode">저장하면 1시간에 걸쳐 새 기준가로 옮겨가요</span></h3>
+    <div class="tblwrap"><table><thead><tr><th>종목</th><th>카드</th><th>USD</th><th>기준가 (젬)</th><th>현재가</th><th>기준일</th></tr></thead><tbody id="oPrices"></tbody></table></div>
+    <div class="ticket"><div class="est"><span>환율로 일괄 환산: <input class="cell" id="fx" inputmode="decimal" placeholder="원/달러" aria-label="원/달러 환율"> <button class="mini" id="fxApply">USD × 환율 적용</button></span><button class="mini" id="oSavePrices">기준가 저장</button></div></div>
+    <h3>예약 작업용 시세 토큰</h3>
+    <div class="ticket">
+      <p class="hint" id="tokenState">-</p>
+      <div class="est"><span>매일 기준가를 자동으로 갱신하는 예약 작업이 쓰는 비밀 토큰이에요. 새로 만들면 이전 토큰은 더 이상 안 돼요.</span><button class="mini" id="tokenNew">새 토큰 만들기</button></div>
+      <div class="inp" id="tokenBox" hidden><input id="tokenVal" readonly aria-label="새 토큰"><em><button class="mini" id="tokenCopy">복사</button></em></div>
+    </div>
+  </section>
+  <section class="box">
+    <h3>운영 설정</h3>
+    <div class="form2">
+      <label class="f wide" for="cSeason">시즌 이름<div class="inp"><input id="cSeason" maxlength="24"></div></label>
+      <label class="f num-in" for="cStart">가입 시 지급 젬<div class="inp"><input id="cStart" inputmode="numeric"></div></label>
+      <label class="f num-in" for="cRefill">재충전 젬<div class="inp"><input id="cRefill" inputmode="numeric"></div></label>
+      <label class="f num-in" for="cThr">재충전 기준 (총 자산)<div class="inp"><input id="cThr" inputmode="numeric"><em>% 미만</em></div></label>
+      <label class="f num-in" for="cCool">재충전 대기<div class="inp"><input id="cCool" inputmode="numeric"><em>시간</em></div></label>
+      <label class="f num-in" for="cLev">최대 레버리지<div class="inp"><input id="cLev" inputmode="numeric"><em>배</em></div></label>
+      <label class="f num-in" for="cFee">수수료<div class="inp"><input id="cFee" inputmode="decimal"><em>%</em></div></label>
+      <label class="f num-in" for="cCs">장 마감 시작 (한국 시간)<div class="inp"><input id="cCs" inputmode="numeric"><em>시</em></div></label>
+      <label class="f num-in" for="cCe">장 개장<div class="inp"><input id="cCe" inputmode="numeric"><em>시</em></div></label>
+      <label class="f num-in" for="cMax">1인 최대 예약 주문<div class="inp"><input id="cMax" inputmode="numeric"><em>개</em></div></label>
+      <label class="f wide" for="cNotice">공지 (거래 화면 상단)<div class="inp"><input id="cNotice" maxlength="120" placeholder="비워 두면 표시 안 함"></div></label>
+      <button class="primary wide" id="oSaveCfg">설정 저장</button>
+    </div>
+    <h3>연령대 분포</h3>
+    <div class="agebar" id="oAges"></div>
+  </section>
+</div>
+
+<section class="box">
+  <h3><span>참가자 관리</span><span><input class="cell" id="newSeason" placeholder="새 시즌 이름" aria-label="새 시즌 이름"> <button class="mini danger" id="oSeasonReset">시즌 초기화 (전원)</button></span></h3>
+  <div class="tblwrap"><table><thead><tr><th>닉네임</th><th>연령대</th><th>가입</th><th>총 자산</th><th>순수익</th><th>재충전</th><th>상태</th><th>보너스 지급</th><th></th></tr></thead><tbody id="oUsers"></tbody></table></div>
+</section>
+</div>
+<div class="toast" id="toast" hidden></div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script src="config.js"></script>
+<script src="common.js"></script>
+<script src="admin.js"></script>
+</body>
+</html>
