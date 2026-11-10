@@ -1,17 +1,18 @@
 (function () {
 const { $, num, fmt, roundT, esc, cname, isOpen, toast, errMsg, armed } = GEM;
 const sb = GEM.client();
-let CFG = null, CARDS = [], OV = null, builtPrices = false;
+let CFG = null, CARDS = [], OV = null, ST = null, builtPrices = false;
 
 async function load() {
-  const [c, g, o] = await Promise.all([sb.from('cards').select('*').order('sort'), sb.from('config').select('*').eq('id', 1).single(), sb.rpc('admin_overview')]);
+  const [c, g, o, s] = await Promise.all([sb.from('cards').select('*').order('sort'), sb.from('config').select('*').eq('id', 1).single(), sb.rpc('admin_overview'), sb.rpc('site_stats')]);
   if (o.error) throw o.error;
-  CARDS = c.data || []; CFG = g.data; OV = o.data;
+  CARDS = c.data || []; CFG = g.data; OV = o.data; ST = s.data || null;
 }
 function render() {
   const st = $('mStatus'), o = isOpen(CFG); st.className = 'status ' + (o ? 'open' : 'closed'); st.querySelector('span').textContent = o ? '장 운영 중' : '장 마감';
   const ps = OV.players || [];
-  $('oCount').textContent = fmt(ps.length);
+  $('oCount').textContent = `${fmt(ps.length)} · ${ST ? fmt(ST.trades_today) : '-'}`;
+  $('oLive').textContent = ST ? `${fmt(Math.max(1, ST.online))} · ${fmt(ST.today)}` : '-';
   $('oOrders').textContent = `${fmt(OV.open_orders)} · ${fmt(OV.positions)}`;
   $('oRefill').textContent = fmt(ps.reduce((a, x) => a + num(x.refills), 0));
   $('oTotal').textContent = fmt(ps.reduce((a, x) => a + num(x.equity), 0));
@@ -60,12 +61,12 @@ $('tokenCopy').onclick = async () => { try { await navigator.clipboard.writeText
 
 (async function boot() {
   if (!sb) { $('loading').textContent = 'config.js에 Supabase 주소와 anon key를 넣어 주세요.'; return; }
-  try { await GEM.ensureSession(sb); await load(); }
+  try { await GEM.ensureSession(sb); await sb.rpc('ping'); await load(); }
   catch (e) {
     const { data } = await sb.auth.getSession(); const id = data.session?.user?.id || '';
     $('loading').innerHTML = `${esc(errMsg(e))}<br><br>이 기기를 운영자로 등록하려면 아래 계정 ID를 안내서의 "운영자 등록" SQL에 넣어 실행해 주세요.<br><code style="user-select:all;color:var(--gem2);word-break:break-all">${esc(id)}</code>`;
     return; }
   $('loading').hidden = true; $('app').hidden = false; render();
-  setInterval(async () => { if (document.hidden) return; try { await load(); render(); } catch (e) {} }, 10000);
+  setInterval(async () => { if (document.hidden) return; try { await sb.rpc('ping'); await load(); render(); } catch (e) {} }, 10000);
 })();
 })();

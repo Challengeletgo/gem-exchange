@@ -285,10 +285,17 @@ function start() {
   Promise.all([loadCandles(), loadPend(), loadLB()]).then(() => render());
   sb.rpc('is_admin').then(r => { if (r.data === true) $('opLink').hidden = false; });
 }
+async function ping() { try { await sb.rpc('ping'); } catch (e) {} }
+async function loadStats() { const r = await sb.rpc('site_stats'); if (r.error || !r.data) return; const s = r.data;
+  $('lvOn').textContent = fmt(Math.max(1, s.online)); $('lvOn2').textContent = fmt(Math.max(1, s.online)); $('lvToday').textContent = fmt(s.today); $('lvPlayers').textContent = fmt(s.players); $('lvTrades').textContent = fmt(s.trades_today); }
 async function boot() {
   if (!sb) { $('loading').textContent = 'config.js에 Supabase 주소와 anon key를 넣어 주세요.'; return; }
   try { await GEM.ensureSession(sb); }
   catch (e) { $('loading').textContent = '접속하지 못했어요. Supabase에서 익명 로그인(Anonymous sign-ins)을 켰는지 확인해 주세요.'; return; }
+  ping().then(loadStats);
+  setInterval(() => { if (!document.hidden) ping(); }, 30000);
+  setInterval(() => { if (!document.hidden) loadStats(); }, 15000);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) ping().then(loadStats); });
   await loadMarket();
   if (!CARDS.length) { $('loading').textContent = '종목 데이터가 없어요. supabase.sql을 실행했는지 확인해 주세요.'; return; }
   await loadMe();

@@ -1011,3 +1011,34 @@ begin
   return n;
 end $$;
 
+-- 004: 접속자 현황 + 시작 젬 100만으로 (기존 데이터 보존)
+create table if not exists public.presence (uid uuid primary key, last_seen timestamptz not null default now());
+create table if not exists public.visits (uid uuid not null, day date not null, primary key (uid, day));
+alter table public.presence enable row level security;
+alter table public.visits enable row level security;
+
+create or replace function public.ping() returns void
+language plpgsql security definer set search_path = public as $$
+begin
+  if auth.uid() is null then return; end if;
+  insert into presence (uid, last_seen) values (auth.uid(), now()) on conflict (uid) do update set last_seen = now();
+  insert into visits (uid, day) values (auth.uid(), (now() at time zone 'Asia/Seoul')::date) on conflict do nothing;
+end $$;
+
+create or replace function public.site_stats() returns jsonb
+language sql stable security definer set search_path = public as $$
+  select jsonb_build_object(
+    'online', (select count(*) from presence where last_seen > now() - interval '75 seconds'),
+    'today', (select count(*) from visits where day = (now() at time zone 'Asia/Seoul')::date),
+    'players', (select count(*) from players),
+    'trades_today', (select count(*) from history where at >= date_trunc('day', now() at time zone 'Asia/Seoul') at time zone 'Asia/Seoul'
+                      and (what in ('매수', '매도', '예약 매수 체결', '예약 매도 체결') or what like '%x 진입' or what like '% 정리')))
+$$;
+
+-- 첫 접속(가입) 시 100만 젬, 출석 보상 끄기
+update public.config set start_cash = 1000000, refill_amount = 1000000, daily_bonus = 0 where id = 1;
+-- 아직 거래 전인 기존 계정(시작 1,000만)은 100만 출발선으로 맞춤
+update public.players p set cash = cash - 9000000, injected = injected - 9000000
+ where injected = 10000000 and cash = 10000000 and refills = 0
+   and not exists (select 1 from public.history h where h.player_id = p.id and h.what not in ('가입 지급'));
+delete from public.visits where day < (now() at time zone 'Asia/Seoul')::date - 60;
